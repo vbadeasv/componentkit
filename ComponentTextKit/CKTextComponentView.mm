@@ -18,6 +18,8 @@
 #import <ComponentKit/CKTextKitRendererCache.h>
 #import <ComponentKit/CKInternalHelpers.h>
 
+#import <ComponentKit/CKTextKitRenderer+TextChecking.h>
+
 #import "CKTextComponentLayer.h"
 #import "CKTextComponentLayerHighlighter.h"
 #import "CKTextComponentViewControlTracker.h"
@@ -116,6 +118,18 @@
 {
   [self.controlTracker endTrackingForTextComponentView:self withTouch:touch withEvent:event];
   [super endTrackingWithTouch:touch withEvent:event];
+}
+
+- (UIView*)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+  UIView *hitView = [super hitTest:point withEvent:event];
+  // If there is no link at touching point then just lie that no view is clicked.
+  // This will cause the touches to be delivered to superview, and most likely will hit the
+  // table/collection cell thus causing the selection of that cell.
+  if (hitView == self && ![self.renderer textCheckingResultAtPoint:point]) {
+    return nil;
+  } else {
+    return hitView;
+  }
 }
 
 #pragma mark - Touch Interaction
