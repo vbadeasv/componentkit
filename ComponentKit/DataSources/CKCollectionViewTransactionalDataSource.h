@@ -40,6 +40,7 @@
  */
 - (void)applyChangeset:(CKTransactionalComponentDataSourceChangeset *)changeset
                   mode:(CKUpdateMode)mode
+              animated:(BOOL)animated
               userInfo:(NSDictionary *)userInfo;
 
 /**
@@ -59,11 +60,13 @@
 
 /** @see `CKTransactionalComponentDataSource` */
 - (void)reloadWithMode:(CKUpdateMode)mode
+              animated:(BOOL)animated
               userInfo:(NSDictionary *)userInfo;
 
 /** @see `CKTransactionalComponentDataSource` */
 - (void)updateConfiguration:(CKTransactionalComponentDataSourceConfiguration *)configuration
                        mode:(CKUpdateMode)mode
+                   animated:(BOOL)animated
                    userInfo:(NSDictionary *)userInfo;
 
 @property (readonly, nonatomic, strong) UICollectionView *collectionView;

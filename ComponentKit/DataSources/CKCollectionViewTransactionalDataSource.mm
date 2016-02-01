@@ -19,6 +19,7 @@
 #import "CKComponentRootView.h"
 #import "CKComponentLayout.h"
 #import "CKComponentDataSourceAttachController.h"
+#import "CKCollectionViewTransactionalDataSourceUserInfo.h"
 
 @interface CKCollectionViewTransactionalDataSource () <
 UICollectionViewDataSource,
@@ -57,11 +58,15 @@ CKTransactionalComponentDataSourceListener
 
 - (void)applyChangeset:(CKTransactionalComponentDataSourceChangeset *)changeset
                   mode:(CKUpdateMode)mode
+              animated:(BOOL)animated
               userInfo:(NSDictionary *)userInfo
 {
+  NSDictionary *wrappedUserInfo = [[[CKCollectionViewTransactionalDataSourceUserInfo alloc]
+                                    initWithUserInfo:userInfo
+                                    applyChangesWithAnimation:animated] pack];
   [_componentDataSource applyChangeset:changeset
                                   mode:mode
-                              userInfo:userInfo];
+                              userInfo:wrappedUserInfo];
 }
 
 static void applyChangesToCollectionView(CKTransactionalComponentDataSourceAppliedChanges *changes, UICollectionView *collectionView)
@@ -83,14 +88,27 @@ static void applyChangesToCollectionView(CKTransactionalComponentDataSourceAppli
                   didModifyPreviousState:(CKTransactionalComponentDataSourceState *)previousState
                        byApplyingChanges:(CKTransactionalComponentDataSourceAppliedChanges *)changes
 {
-  [_collectionView performBatchUpdates:^{
-    applyChangesToCollectionView(changes, _collectionView);
-    // Detach all the component layouts for items being deleted
-    [self _detachComponentLayoutForRemovedItemsAtIndexPaths:[changes removedIndexPaths]
-                                                    inState:previousState];
-    // Update current state
-    _currentState = [_componentDataSource state];
-  } completion:NULL];
+  CKCollectionViewTransactionalDataSourceUserInfo *userInfo = [CKCollectionViewTransactionalDataSourceUserInfo
+                                                               unpack:changes.userInfo];
+
+  void (^applyChangesBlock)() = ^() {
+    [_collectionView performBatchUpdates:^{
+      applyChangesToCollectionView(changes, _collectionView);
+      // Detach all the component layouts for items being deleted
+      [self _detachComponentLayoutForRemovedItemsAtIndexPaths:[changes removedIndexPaths]
+                                                      inState:previousState];
+      // Update current state
+      _currentState = [_componentDataSource state];
+    } completion:NULL];
+  };
+
+  if (userInfo.applyChangesWithAnimation) {
+    applyChangesBlock();
+  } else {
+    [UIView performWithoutAnimation:^{
+      applyChangesBlock();
+    }];
+  }
 }
 
 - (void)_detachComponentLayoutForRemovedItemsAtIndexPaths:(NSSet *)removedIndexPaths
@@ -117,16 +135,24 @@ static void applyChangesToCollectionView(CKTransactionalComponentDataSourceAppli
 #pragma mark - Reload
 
 - (void)reloadWithMode:(CKUpdateMode)mode
+              animated:(BOOL)animated
               userInfo:(NSDictionary *)userInfo
 {
-  [_componentDataSource reloadWithMode:mode userInfo:userInfo];
+  NSDictionary *wrappedUserInfo = [[[CKCollectionViewTransactionalDataSourceUserInfo alloc]
+                                    initWithUserInfo:userInfo
+                                    applyChangesWithAnimation:animated] pack];
+  [_componentDataSource reloadWithMode:mode userInfo:wrappedUserInfo];
 }
 
 - (void)updateConfiguration:(CKTransactionalComponentDataSourceConfiguration *)configuration
                        mode:(CKUpdateMode)mode
+                   animated:(BOOL)animated
                    userInfo:(NSDictionary *)userInfo
 {
-  [_componentDataSource updateConfiguration:configuration mode:mode userInfo:userInfo];
+  NSDictionary *wrappedUserInfo = [[[CKCollectionViewTransactionalDataSourceUserInfo alloc]
+                                    initWithUserInfo:userInfo
+                                    applyChangesWithAnimation:animated] pack];
+  [_componentDataSource updateConfiguration:configuration mode:mode userInfo:wrappedUserInfo];
 }
 
 #pragma mark - UICollectionViewDataSource
