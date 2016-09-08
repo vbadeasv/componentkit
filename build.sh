@@ -8,7 +8,7 @@ if [ -z $1 ]; then
   exit
 fi
 
-BUILDOUTPUTFILTER="tee" # handle xcpretty not being installed, tee will act like a noop
+BUILDOUTPUTFILTER="tee"
 if type xcpretty > /dev/null 2>&1; then
   BUILDOUTPUTFILTER="xcpretty"
 fi
@@ -37,8 +37,7 @@ function tvos_ci() {
 }
 
 if [ "$MODE" = "ci" ]; then
-  brew install carthage
-  carthage update
+  carthage bootstrap
 
   ios_ci ComponentKit test
   tvos_ci ComponentKit test
