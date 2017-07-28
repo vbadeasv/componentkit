@@ -13,8 +13,9 @@
 #import <ComponentKit/ComponentMountContext.h>
 #import <ComponentKit/CKComponent.h>
 #import <ComponentKit/CKComponentLayout.h>
+#import <ComponentKit/CKScopedComponent.h>
 
-@interface CKComponent ()
+@interface CKComponent () <CKScopedComponent>
 
 /**
  Mounts the component in the given context:
@@ -45,7 +46,6 @@
  Unmounts the component:
  - Clears the references to supercomponent and superview.
  - If the component has a _mountedView:
-   - Calls the unapplicator for any attributes that have one.
    - Clears the view's reference back to this component in ck_component.
    - Clears _mountedView.
  */
@@ -57,9 +57,6 @@
 
 /** Called when the component and all its children have been mounted. */
 - (void)childrenDidMount;
-
-/** Called by the animation machinery. Do not access this externally. */
-- (UIView *)viewForAnimation;
 
 /** Used to get the root component in the responder chain; don't touch this. */
 @property (nonatomic, weak) UIView *rootComponentMountedView;

@@ -73,9 +73,27 @@
   XCTAssertTrue([fakeParentComponent receivedTest], @"Expected handler to be called");
 }
 
+- (void)testThatTappingAViewWithoutAComponentAssociatedDoenNotSendComponentAction
+{
+  //For this test the view does not have any component associated
+  UIView *view = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 100, 100)];
+  id mockComponent = [OCMockObject mockForClass:[CKComponent class]];
+  CKFakeActionComponent *fakeParentComponent = [CKFakeActionComponent new];
+  [[[mockComponent stub] andReturn:fakeParentComponent] nextResponder];
+  [[[mockComponent stub] andReturn:fakeParentComponent] targetForAction:[OCMArg anySelector] withSender:[OCMArg any]];
+
+  CKComponentViewAttributeValue attr = CKComponentTapGestureAttribute(@selector(test:));
+  attr.first.applicator(view, attr.second);
+
+  UIGestureRecognizer *tapRecognizer = [view.gestureRecognizers firstObject];
+  [[CKComponentGestureActionForwarder sharedInstance] handleGesture:tapRecognizer];
+  XCTAssertFalse([fakeParentComponent receivedTest], @"Expected handler not to be called");
+}
+
+
 - (void)testThatApplyingATapRecognizerAttributeWithNoActionDoesNotAddRecognizerToView
 {
-  CKComponentViewAttributeValue attr = CKComponentTapGestureAttribute(NULL);
+  CKComponentViewAttributeValue attr = CKComponentTapGestureAttribute(nullptr);
   UIView *view = [UIView new];
 
   attr.first.applicator(view, attr.second);
@@ -118,6 +136,16 @@
 
   UIPanGestureRecognizer *gesture = view.gestureRecognizers.firstObject;
   XCTAssertNil(gesture.delegate, @"Gesture delegate should not be set");
+}
+
+- (void)testThatApplyingANilRecognizerClassResultsInNoRecognizer
+{
+  CKComponentViewAttributeValue attr = CKComponentGestureAttribute(Nil, nullptr, @selector(test));
+  UIView *view = [UIView new];
+
+  attr.first.applicator(view, attr.second);
+  XCTAssertEqual([view.gestureRecognizers count], 0u, @"Expected no gesture recognizer to be attached");
+  attr.first.unapplicator(view, attr.second);
 }
 
 - (void)testThatApplyingATapRecognizerAttributeWithDifferentTargetToViewWithExistingRecognizerUpdatesAction

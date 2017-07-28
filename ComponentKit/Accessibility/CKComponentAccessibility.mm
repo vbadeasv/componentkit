@@ -26,6 +26,15 @@ static CKViewComponentAttributeValueMap ViewAttributesFromAccessibilityContext(c
   if (accessibilityContext.accessibilityLabel.hasText()) {
     accessibilityAttributes[@selector(setAccessibilityLabel:)] = accessibilityContext.accessibilityLabel.value();
   }
+  if (accessibilityContext.accessibilityHint.hasText()) {
+    accessibilityAttributes[@selector(setAccessibilityHint:)] = accessibilityContext.accessibilityHint.value();
+  }
+  if (accessibilityContext.accessibilityValue.hasText()) {
+    accessibilityAttributes[@selector(setAccessibilityValue:)] = accessibilityContext.accessibilityValue.value();
+  }
+  if (accessibilityContext.accessibilityTraits) {
+    accessibilityAttributes[@selector(setAccessibilityTraits:)] = accessibilityContext.accessibilityTraits;
+  }
   return accessibilityAttributes;
 }
 
@@ -49,12 +58,7 @@ CKComponentViewConfiguration CK::Component::Accessibility::AccessibleViewConfigu
   }
 }
 
-#if TARGET_OS_SIMULATOR
-static BOOL _forceAccessibilityEnabled = YES;
-#else
 static BOOL _forceAccessibilityEnabled = NO;
-#endif
-
 static BOOL _forceAccessibilityDisabled = NO;
 
 void CK::Component::Accessibility::SetForceAccessibilityEnabled(BOOL enabled)

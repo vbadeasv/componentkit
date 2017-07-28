@@ -10,33 +10,48 @@
 
 #import "CKComponentScopeFrame.h"
 
+#import <algorithm>
 #import <unordered_map>
 #import <libkern/OSAtomic.h>
 
 #import "CKAssert.h"
-#import "CKComponentController.h"
 #import "CKComponentInternal.h"
 #import "CKComponentScopeHandle.h"
-#import "CKComponentScopeRootInternal.h"
+#import "CKComponentScopeRoot.h"
 #import "CKComponentSubclass.h"
 #import "CKEqualityHashHelpers.h"
 #import "CKMacros.h"
 #import "CKThreadLocalComponentScope.h"
 
-typedef struct _CKStateScopeKey {
+static bool keyVectorsEqual(const std::vector<id<NSObject>> &a, const std::vector<id<NSObject>> &b)
+{
+  if (a.size() != b.size()) {
+    return false;
+  }
+  return std::equal(a.begin(), a.end(), b.begin(), [](id<NSObject> x, id<NSObject> y){
+    return CKObjectIsEqual(x, y); // be pedantic and use a lambda here becuase BOOL != bool
+  });
+}
+
+struct CKStateScopeKey {
   Class __unsafe_unretained componentClass;
   id identifier;
+  std::vector<id<NSObject>> keys;
 
-  bool operator==(const _CKStateScopeKey &v) const {
-    return (CKObjectIsEqual(this->componentClass, v.componentClass) && CKObjectIsEqual(this->identifier, v.identifier));
+  bool operator==(const CKStateScopeKey &v) const {
+    return (CKObjectIsEqual(this->componentClass, v.componentClass)
+            && CKObjectIsEqual(this->identifier, v.identifier)
+            && keyVectorsEqual(this->keys, v.keys));
   }
-} _CKStateScopeKey;
+};
 
 namespace std {
   template <>
-  struct hash<_CKStateScopeKey> {
-    size_t operator ()(_CKStateScopeKey k) const {
-      NSUInteger subhashes[] = { [k.componentClass hash], [k.identifier hash] };
+  struct hash<CKStateScopeKey> {
+    size_t operator ()(CKStateScopeKey k) const {
+      // Note we just use k.keys.size() for the hash of keys. Otherwise we'd have to enumerate over each item and
+      // call [NSObject -hash] on it and incorporate every element into the overall hash somehow.
+      NSUInteger subhashes[] = { [k.componentClass hash], [k.identifier hash], k.keys.size() };
       return CKIntegerArrayHash(subhashes, CK_ARRAY_COUNT(subhashes));
     }
   };
@@ -44,27 +59,27 @@ namespace std {
 
 @implementation CKComponentScopeFrame
 {
-  std::unordered_map<_CKStateScopeKey, CKComponentScopeFrame *> _children;
+  std::unordered_map<CKStateScopeKey, CKComponentScopeFrame *> _children;
 }
 
 + (CKComponentScopeFramePair)childPairForPair:(const CKComponentScopeFramePair &)pair
                                       newRoot:(CKComponentScopeRoot *)newRoot
-                               componentClass:(Class)componentClass
+                               componentClass:(Class<CKScopedComponent>)componentClass
                                    identifier:(id)identifier
+                                         keys:(const std::vector<id<NSObject>> &)keys
                           initialStateCreator:(id (^)())initialStateCreator
                                  stateUpdates:(const CKComponentStateUpdateMap &)stateUpdates
 {
-  CKCAssert([componentClass isSubclassOfClass:[CKComponent class]], @"%@ is not a component", NSStringFromClass(componentClass));
   CKAssertNotNil(pair.frame, @"Must have frame");
 
   CKComponentScopeFrame *existingChildFrameOfEquivalentPreviousFrame;
   if (pair.equivalentPreviousFrame) {
     const auto &equivalentPreviousFrameChildren = pair.equivalentPreviousFrame->_children;
-    const auto it = equivalentPreviousFrameChildren.find({componentClass, identifier});
+    const auto it = equivalentPreviousFrameChildren.find({componentClass, identifier, keys});
     existingChildFrameOfEquivalentPreviousFrame = (it == equivalentPreviousFrameChildren.end()) ? nil : it->second;
   }
 
-  const auto existingChild = pair.frame->_children.find({componentClass, identifier});
+  const auto existingChild = pair.frame->_children.find({componentClass, identifier, keys});
   if (!pair.frame->_children.empty() && (existingChild != pair.frame->_children.end())) {
     /*
      The component was involved in a scope collision and the scope handle needs to be reacquired.
@@ -165,7 +180,7 @@ namespace std {
                                  initialStateCreator:initialStateCreator];
 
   CKComponentScopeFrame *newChild = [[CKComponentScopeFrame alloc] initWithHandle:newHandle];
-  pair.frame->_children.insert({{componentClass, identifier}, newChild});
+  pair.frame->_children.insert({{componentClass, identifier, keys}, newChild});
   return {.frame = newChild, .equivalentPreviousFrame = existingChildFrameOfEquivalentPreviousFrame};
 }
 

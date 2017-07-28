@@ -103,7 +103,7 @@ CKComponentViewAttributeValue CKComponentGestureAttribute(Class gestureRecognize
                                                           CKTypedComponentAction<UIGestureRecognizer *> action,
                                                           CKComponentForwardedSelectors delegateSelectors)
 {
-  if (!action) {
+  if (!action || gestureRecognizerClass == Nil) {
     return {
       {
         std::string(class_getName(gestureRecognizerClass)) + "-"
@@ -147,9 +147,12 @@ CKComponentViewAttributeValue CKComponentGestureAttribute(Class gestureRecognize
       },
       ^(UIView *view, id value){
         UIGestureRecognizer *recognizer = recognizerForAction(view, blockAction);
-        CKCAssertNotNil(recognizer, @"Expected to find recognizer for %@ on teardown", NSStringFromSelector(blockAction.selector()));
+        if (recognizer == nil) {
+          return;
+        }
+        
         [view removeGestureRecognizer:recognizer];
-        [recognizer ck_setComponentAction:NULL];
+        [recognizer ck_setComponentAction:nullptr];
         
         // Tear down delegate proxying if applicable
         if (delegateSelectors.size() > 0) {
@@ -179,8 +182,10 @@ CKComponentViewAttributeValue CKComponentGestureAttribute(Class gestureRecognize
 
 - (void)handleGesture:(UIGestureRecognizer *)recognizer
 {
-  // If the action can be handled by the sender itself, send it there instead of looking up the chain.
-  [recognizer ck_componentAction].send(recognizer.view.ck_component, CKComponentActionSendBehaviorStartAtSender, recognizer);
+  if (recognizer.view.ck_component) {
+    // If the action can be handled by the sender itself, send it there instead of looking up the chain.
+    [recognizer ck_componentAction].send(recognizer.view.ck_component, CKComponentActionSendBehaviorStartAtSender, recognizer);
+  }
 }
 
 @end

@@ -17,8 +17,11 @@
 CKComponentScope::~CKComponentScope()
 {
   if (_threadLocalScope != nullptr) {
+    _clearKeys.reset(nullptr); // restore keys that were reset in constructor
     [_scopeHandle resolve];
     _threadLocalScope->stack.pop();
+    CKCAssert(_threadLocalScope->keys.top().empty(), @"Expected keys to be cleared by destructor time");
+    _threadLocalScope->keys.pop();
   }
 }
 
@@ -30,10 +33,12 @@ CKComponentScope::CKComponentScope(Class __unsafe_unretained componentClass, id 
                                                            newRoot:_threadLocalScope->newScopeRoot
                                                     componentClass:componentClass
                                                         identifier:identifier
+                                                              keys:_threadLocalScope->keys.top()
                                                initialStateCreator:initialStateCreator
                                                       stateUpdates:_threadLocalScope->stateUpdates];
     _threadLocalScope->stack.push({.frame = childPair.frame, .equivalentPreviousFrame = childPair.equivalentPreviousFrame});
     _scopeHandle = childPair.frame.handle;
+    _threadLocalScope->keys.push({});
   }
 }
 
@@ -46,7 +51,11 @@ CKComponentStateUpdater CKComponentScope::stateUpdater(void) const noexcept
 {
   // We must capture _scopeHandle in a local, since this may be destroyed by the time the block executes.
   CKComponentScopeHandle *const scopeHandle = _scopeHandle;
-  return ^(id (^update)(id), CKUpdateMode mode){ [scopeHandle updateState:update mode:mode]; };
+  return ^(id (^stateUpdate)(id), NSDictionary<NSString *, NSString *> *userInfo, CKUpdateMode mode) {
+    [scopeHandle updateState:stateUpdate
+                    userInfo:userInfo
+                        mode:mode];
+  };
 }
 
 CKComponentScopeHandle *CKComponentScope::scopeHandle(void) const noexcept

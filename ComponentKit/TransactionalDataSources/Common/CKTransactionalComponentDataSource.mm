@@ -149,6 +149,7 @@
 - (void)componentScopeHandleWithIdentifier:(CKComponentScopeHandleIdentifier)globalIdentifier
                             rootIdentifier:(CKComponentScopeRootIdentifier)rootIdentifier
                      didReceiveStateUpdate:(id (^)(id))stateUpdate
+                                  userInfo:(NSDictionary<NSString *,NSString *> *)userInfo
                                       mode:(CKUpdateMode)mode
 {
   CKAssertMainThread();
@@ -261,16 +262,29 @@ static void verifyChangeset(CKTransactionalComponentDataSourceChangeset *changes
                             NSArray<id<CKTransactionalComponentDataSourceStateModifying>> *pendingAsynchronousModifications)
 {
 #if CK_ASSERTIONS_ENABLED
-  const CKBadChangesetOperationType badChangesetOperationType = CKIsValidChangesetForState(changeset,
-                                                                                           state,
-                                                                                           pendingAsynchronousModifications);
-  CKCAssert(badChangesetOperationType == CKBadChangesetOperationTypeNone,
-            @"Bad operation: %@\n*** Changeset:\n%@\n*** Data source state:\n%@\n*** Pending data source modifications:\n%@",
-            CKHumanReadableBadChangesetOperationType(badChangesetOperationType),
-            changeset,
-            state,
-            pendingAsynchronousModifications);
+  const CKInvalidChangesetOperationType invalidChangesetOperationType = CKIsValidChangesetForState(changeset,
+                                                                                                   state,
+                                                                                                   pendingAsynchronousModifications);
+  if (invalidChangesetOperationType != CKInvalidChangesetOperationTypeNone) {
+    NSString *const humanReadableInvalidChangesetOperationType = CKHumanReadableInvalidChangesetOperationType(invalidChangesetOperationType);
+    NSString *const humanReadablePendingAsynchronousModifications = readableStringForArray(pendingAsynchronousModifications);
+    CKCFatal(@"Invalid changeset: %@\n*** Changeset:\n%@\n*** Data source state:\n%@\n*** Pending data source modifications:\n%@", humanReadableInvalidChangesetOperationType, changeset, state, humanReadablePendingAsynchronousModifications);
+  }
 #endif
+}
+
+static NSString *readableStringForArray(NSArray *array)
+{
+  if (!array || array.count == 0) {
+    return @"()";
+  }
+  NSMutableString *mutableString = [NSMutableString new];
+  [mutableString appendFormat:@"(\n"];
+  for (id value in array) {
+    [mutableString appendFormat:@"\t%@,\n", value];
+  }
+  [mutableString appendString:@")\n"];
+  return mutableString;
 }
 
 @end

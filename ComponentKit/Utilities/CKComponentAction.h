@@ -15,6 +15,16 @@
 
 @class CKComponent;
 
+namespace CK {
+  namespace detail {
+    template<class...> struct any_references : std::false_type {};
+    template<class T> struct any_references<T> : std::is_reference<T> {};
+    template<class T, class... Ts>
+    struct any_references<T, Ts...>
+      : std::conditional<std::is_reference<T>::value, std::true_type, any_references<Ts...>>::type {};
+  }
+}
+
 /**
  CKTypedComponentAction is a struct that represents a method invocation that can be passed to a child component to
  trigger a method invocation on a target.
@@ -83,13 +93,25 @@
  {
    _action.send(self, @"hello", 4);
  }
+
+
+ In the event that an action does not contain a target or a selector, it will no-op.
+ As a result, it is the responsibility of the component to check (and possibly assert)
+ when it has been given an "invalid" action.
  */
 template<typename... T>
 class CKTypedComponentAction : public CKTypedComponentActionBase {
   static_assert(std::is_same<
-                CKTypedComponentActionBoolPack<(std::is_trivially_constructible<T>::value || std::is_pointer<T>::value)...>,
+                CKTypedComponentActionBoolPack<(std::is_reference<T>::value
+                                                || std::is_pointer<T>::value
+                                                || std::is_trivially_constructible<T>::value
+                                                || std::is_convertible<T, id>::value)...>,
                 CKTypedComponentActionBoolPack<(CKTypedComponentActionDenyType<T>::value)...>
                 >::value, "You must either use a pointer (like an NSObject) or a trivially constructible type. Complex types are not allowed as arguments of component actions.");
+
+  /** This constructor is private to forbid direct usage. Use actionFromBlock. */
+  CKTypedComponentAction<T...>(void(^block)(CKComponent *, T...)) noexcept : CKTypedComponentActionBase((dispatch_block_t)block) {};
+  
 public:
   CKTypedComponentAction<T...>() noexcept : CKTypedComponentActionBase() {};
   CKTypedComponentAction<T...>(id target, SEL selector) noexcept : CKTypedComponentActionBase(target, selector)
@@ -113,21 +135,50 @@ public:
   /** Legacy constructor for raw selector actions. Traverse up the mount responder chain. */
   CKTypedComponentAction(SEL selector) noexcept : CKTypedComponentActionBase(selector) {};
 
-  /** Allows conversion from NULL actions. */
-  CKTypedComponentAction(int s) noexcept : CKTypedComponentActionBase() {};
-  CKTypedComponentAction(long s) noexcept : CKTypedComponentActionBase() {};
+  /** 
+   Allows passing a block as an action. It is easy to create retain cycles with this API, always prefer scoped actions
+   over this if possible.
+   */
+  static CKTypedComponentAction<T...> actionFromBlock(void(^block)(CKComponent *, T...)) {
+    return CKTypedComponentAction<T...>(block);
+  }
+
+  /**
+   Allows demoting an action to a simpler action while supplying defaults for the values that won't be passed in.
+   */
+  template<typename... U>
+  static CKTypedComponentAction<T...> demotedFrom(CKTypedComponentAction<T..., U...> action, U... defaults) {
+    static_assert(!CK::detail::any_references<U...>::value, "Demoting an action with reference defaults is not allowed");
+    return CKTypedComponentAction<T...>::actionFromBlock(^(CKComponent *sender, T... args) {
+      action.send(sender, args..., defaults...);
+    });
+  }
+
+  /**
+   Allows explicit null actions. NULL can cause ambiguity in constructor resolution and is best avoided where
+   nullptr is available.
+   */
   CKTypedComponentAction(std::nullptr_t n) noexcept : CKTypedComponentActionBase() {};
 
   /** We support promotion from actions that take no arguments. */
   template <typename... Ts>
-  CKTypedComponentAction<Ts...>(const CKTypedComponentAction<> &action) noexcept : CKTypedComponentActionBase(action) { };
+  CKTypedComponentAction<Ts...>(const CKTypedComponentAction<> &action) noexcept : CKTypedComponentActionBase(action) {
+    // At runtime if we provide more arguments to a block on invocation than accepted by the block, the behavior is
+    // undefined. If you hit this assert, it means somewhere in your code you're doing this:
+    // CKTypedComponentAction<BOOL, int> = ^(CKComponent *sender) {
+    // To fix the error, you must handle all arguments:
+    // CKTypedComponentAction<BOOL, int> = ^(CKComponent *sender, BOOL foo, int bar) {
+    CKCAssert(_variant != CKTypedComponentActionVariant::Block, @"Block actions should not take fewer arguments than defined in the declaration of the action, you are depending on undefined behavior and will cause crashes.");
+  };
 
   /**
    We allow demotion from actions with types to untyped actions, but only when explicit. This means arguments to the
    method specified here will have nil values at runtime. Used for interoperation with older API's.
    */
   template<typename... Ts>
-  explicit CKTypedComponentAction<>(const CKTypedComponentAction<Ts...> &action) noexcept : CKTypedComponentActionBase(action) { };
+  explicit CKTypedComponentAction<>(const CKTypedComponentAction<Ts...> &action) noexcept : CKTypedComponentActionBase(action) {
+    CKCAssert(_variant != CKTypedComponentActionVariant::Block, @"Block actions cannot take fewer arguments than provided in the declaration of the action, you are depending on undefined behavior and will cause crashes.");
+  };
 
   ~CKTypedComponentAction() {};
 
@@ -135,6 +186,11 @@ public:
   { this->send(sender, defaultBehavior(), args...); };
   void send(CKComponent *sender, CKComponentActionSendBehavior behavior, T... args) const
   {
+    if (_variant == CKTypedComponentActionVariant::Block) {
+      void (^block)(CKComponent *sender, T... args) = (void (^)(CKComponent *sender, T... args))_block;
+      block(sender, args...);
+      return;
+    }
     const id target = initialTarget(sender);
     const id responder = behavior == CKComponentActionSendBehaviorStartAtSender ? target : [target nextResponder];
     CKComponentActionSendResponderChain(selector(), responder, sender, args...);

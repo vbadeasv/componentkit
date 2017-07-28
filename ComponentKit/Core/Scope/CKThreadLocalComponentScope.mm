@@ -34,10 +34,10 @@ CKThreadLocalComponentScope *CKThreadLocalComponentScope::currentScope() noexcep
 
 CKThreadLocalComponentScope::CKThreadLocalComponentScope(CKComponentScopeRoot *previousScopeRoot,
                                                          const CKComponentStateUpdateMap &updates)
-: newScopeRoot([previousScopeRoot newRoot]), stateUpdates(updates), stack()
+: newScopeRoot([previousScopeRoot newRoot]), stateUpdates(updates), stack(), previousScope(CKThreadLocalComponentScope::currentScope())
 {
-  CKCAssert(CKThreadLocalComponentScope::currentScope() == nullptr, @"CKThreadLocalComponentScope already exists");
   stack.push({[newScopeRoot rootFrame], [previousScopeRoot rootFrame]});
+  keys.push({});
   pthread_setspecific(_threadKey(), this);
 }
 
@@ -45,16 +45,6 @@ CKThreadLocalComponentScope::~CKThreadLocalComponentScope()
 {
   stack.pop();
   CKCAssert(stack.empty(), @"Didn't expect stack to contain anything in destructor");
-  pthread_setspecific(_threadKey(), nullptr);
-}
-
-CKThreadLocalComponentScopeOverride::CKThreadLocalComponentScopeOverride(CKThreadLocalComponentScope *scope) noexcept
-: previousScope(CKThreadLocalComponentScope::currentScope())
-{
-  pthread_setspecific(_threadKey(), scope);
-}
-
-CKThreadLocalComponentScopeOverride::~CKThreadLocalComponentScopeOverride()
-{
+  CKCAssert(keys.size() == 1 && keys.top().empty(), @"Expected keys to be at initial state in destructor");
   pthread_setspecific(_threadKey(), previousScope);
 }

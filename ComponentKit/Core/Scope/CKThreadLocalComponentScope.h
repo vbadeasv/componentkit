@@ -9,6 +9,7 @@
  */
 
 #import <stack>
+#import <vector>
 
 #import <Foundation/Foundation.h>
 
@@ -27,16 +28,7 @@ public:
   CKComponentScopeRoot *const newScopeRoot;
   const CKComponentStateUpdateMap stateUpdates;
   std::stack<CKComponentScopeFramePair> stack;
-};
-
-/**
- Temporarily overrides the current thread's component scope.
- Use for testing and advanced integration purposes only.
- */
-class CKThreadLocalComponentScopeOverride {
-public:
-  CKThreadLocalComponentScopeOverride(CKThreadLocalComponentScope *scope) noexcept;
-  ~CKThreadLocalComponentScopeOverride();
+  std::stack<std::vector<id<NSObject>>> keys;
 
 private:
   CKThreadLocalComponentScope *const previousScope;

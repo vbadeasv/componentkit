@@ -14,21 +14,13 @@
 
 #import <ComponentKit/CKAssert.h>
 #import <ComponentKit/CKComponentScope.h>
+#import <ComponentKit/CKComponentScopeHandle.h>
 
 #import <type_traits>
 
 @class CKComponent;
 
-/**
- We support several different types of action variants. You don't need to use this value anywhere, it's set for you
- by whatever initializer you end up using.
- */
-typedef NS_ENUM(NSUInteger, CKTypedComponentActionVariant) {
-  CKTypedComponentActionVariantRawSelector = 0,
-  CKTypedComponentActionVariantTargetSelector,
-  CKTypedComponentActionVariantComponentScope
-};
-
+typedef id (^CKResponderGenerationBlock)(void);
 typedef NS_ENUM(NSUInteger, CKComponentActionSendBehavior) {
   /** Starts searching at the sender's next responder. Usually this is what you want to prevent infinite loops. */
   CKComponentActionSendBehaviorStartAtSenderNextResponder,
@@ -40,36 +32,52 @@ typedef NS_ENUM(NSUInteger, CKComponentActionSendBehavior) {
 
 /** A base-class for typed components that doesn't use templates to avoid template bloat. */
 class CKTypedComponentActionBase {
-protected:
+  protected:
+  
+  /**
+   We support several different types of action variants. You don't need to use this value anywhere, it's set for you
+   by whatever initializer you end up using.
+   */
+  enum class CKTypedComponentActionVariant {
+    RawSelector,
+    TargetSelector,
+    Responder,
+    Block
+  };
+
   CKTypedComponentActionBase() noexcept;
   CKTypedComponentActionBase(id target, SEL selector) noexcept;
-  
+
   CKTypedComponentActionBase(const CKComponentScope &scope, SEL selector) noexcept;
-  
+
   /** Legacy constructor for raw selector actions. Traverse up the mount responder chain. */
   CKTypedComponentActionBase(SEL selector) noexcept;
   
-  /** Allows conversion from NULL actions. */
-  CKTypedComponentActionBase(int s) noexcept;
-  CKTypedComponentActionBase(long s) noexcept;
-  CKTypedComponentActionBase(std::nullptr_t n) noexcept;
-  
+  CKTypedComponentActionBase(dispatch_block_t block) noexcept;
+
   ~CKTypedComponentActionBase() {};
-  
+
   id initialTarget(CKComponent *sender) const;
   CKComponentActionSendBehavior defaultBehavior() const;
-  
+
   bool operator==(const CKTypedComponentActionBase& rhs) const;
-  
-  CKTypedComponentActionVariant _variant;
+
+  // Destroying this field calls objc_destroyWeak. Since this is the only field
+  // that runs code on destruction, making this field the first field of this
+  // object saves an offset calculation instruction in the destructor.
   __weak id _target;
-  __weak CKComponentScopeHandle *_scopeHandle;
+  std::pair<CKScopedResponderUniqueIdentifier, CKResponderGenerationBlock> _scopeIdentifierAndResponderGenerator;
+  dispatch_block_t _block;
+  CKTypedComponentActionVariant _variant;
   SEL _selector;
-  
+
 public:
   explicit operator bool() const noexcept;
-  bool isEqual(const CKTypedComponentActionBase &rhs) const noexcept;
+  bool isEqual(const CKTypedComponentActionBase &rhs) const noexcept {
+    return *this == rhs;
+  }
   SEL selector() const noexcept;
+  dispatch_block_t block() const noexcept;
   std::string identifier() const noexcept;
 };
 
@@ -133,5 +141,8 @@ static void CKComponentActionSendResponderChain(SEL selector, id target, CKCompo
   // We use a recursive argument unpack to unwrap the variadic arguments in-order on the invocation in a type-safe
   // manner.
   CKConfigureInvocationWithArguments(invocation, 3, args...);
+  // NSInvocation does not by default retain its target or object arguments. We have to manually call this to ensure
+  // that these arguments and target are not deallocated through the scope of the invocation.
+  [invocation retainArguments];
   [invocation invoke];
 }

@@ -10,18 +10,18 @@
 
 #import <Foundation/Foundation.h>
 
+#import <unordered_set>
+
 #import <ComponentKit/CKComponentBoundsAnimation.h>
 #import <ComponentKit/CKComponentScopeTypes.h>
+#import <ComponentKit/CKScopedComponentController.h>
 #import <ComponentKit/CKUpdateMode.h>
 
-@class CKComponent;
+@protocol CKScopedComponent;
+@protocol CKScopedComponentController;
+
 @class CKComponentScopeFrame;
 @class CKComponentScopeRoot;
-
-typedef NS_ENUM(NSUInteger, CKComponentAnnouncedEvent) {
-  CKComponentAnnouncedEventTreeWillAppear,
-  CKComponentAnnouncedEventTreeDidDisappear,
-};
 
 /** Component state announcements will always be made on the main thread. */
 @protocol CKComponentStateListener <NSObject>
@@ -29,32 +29,32 @@ typedef NS_ENUM(NSUInteger, CKComponentAnnouncedEvent) {
 - (void)componentScopeHandleWithIdentifier:(CKComponentScopeHandleIdentifier)globalIdentifier
                             rootIdentifier:(CKComponentScopeRootIdentifier)rootIdentifier
                      didReceiveStateUpdate:(id (^)(id))stateUpdate
+                                  userInfo:(NSDictionary<NSString *, NSString *> *)userInfo
                                       mode:(CKUpdateMode)mode;
 
 @end
 
-struct CKBuildComponentResult {
-  CKComponent *component;
-  CKComponentScopeRoot *scopeRoot;
-  CKComponentBoundsAnimation boundsAnimation;
-};
+@interface CKComponentScopeRoot : NSObject <CKComponentScopeEnumeratorProvider>
 
-CKBuildComponentResult CKBuildComponent(CKComponentScopeRoot *previousRoot,
-                                        const CKComponentStateUpdateMap &stateUpdates,
-                                        CKComponent *(^function)(void));
-
-@interface CKComponentScopeRoot : NSObject
-
-/** Creates a conceptually brand new scope root */
-+ (instancetype)rootWithListener:(id<CKComponentStateListener>)listener;
+/**
+ Creates a conceptually brand new scope root. Prefer to use CKComponentScopeRootWithDefaultPredicates instead of this.
+ 
+ @param listener A listener for state updates that flow through the scope root.
+ @param componentPredicates A vector of C functions that are executed on each component constructed within the scope
+                            root. By passing in the predicates on initialization, we are able to cache which components
+                            match the predicate for rapid enumeration later.
+ @param componentControllerPredicates Same as componentPredicates above, but for component controllers.
+ */
++ (instancetype)rootWithListener:(id<CKComponentStateListener>)listener
+             componentPredicates:(const std::unordered_set<CKComponentScopePredicate> &)componentPredicates
+   componentControllerPredicates:(const std::unordered_set<CKComponentControllerScopePredicate> &)componentControllerPredicates;
 
 /** Creates a new version of an existing scope root, ready to be used for building a component tree */
 - (instancetype)newRoot;
 
-/** Sends the given event to all component controllers that implement it. */
-- (void)announceEventToControllers:(CKComponentAnnouncedEvent)event;
-
-- (CKComponentBoundsAnimation)boundsAnimationFromPreviousScopeRoot:(CKComponentScopeRoot *)previousRoot;
+/** Must be called when initializing a component or controller. */
+- (void)registerComponentController:(id<CKScopedComponentController>)componentController;
+- (void)registerComponent:(id<CKScopedComponent>)component;
 
 @property (nonatomic, weak, readonly) id<CKComponentStateListener> listener;
 @property (nonatomic, readonly) CKComponentScopeRootIdentifier globalIdentifier;

@@ -10,12 +10,18 @@
 
 #import <Foundation/Foundation.h>
 
+#import <ComponentKit/CKComponentContext.h>
 #import <ComponentKit/CKUpdateMode.h>
+
+#include <memory>
 
 class CKThreadLocalComponentScope;
 @class CKComponentScopeHandle;
+@class CKComponentKeyStorage;
 
-typedef void (^CKComponentStateUpdater)(id (^)(id), CKUpdateMode mode);
+typedef void (^CKComponentStateUpdater)(id (^updateBlock)(id),
+                                        NSDictionary<NSString *, NSString *> * userInfo,
+                                        CKUpdateMode mode);
 
 /**
  Components have local "state" that is independent of the values passed into its +new method. Components can update
@@ -77,4 +83,5 @@ private:
   CKComponentScope &operator=(const CKComponentScope&) = delete;
   CKThreadLocalComponentScope *_threadLocalScope;
   CKComponentScopeHandle *_scopeHandle;
+  std::unique_ptr<CKComponentContext<CKComponentKeyStorage>> _clearKeys;
 };

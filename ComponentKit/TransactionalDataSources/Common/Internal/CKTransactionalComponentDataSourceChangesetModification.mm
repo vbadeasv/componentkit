@@ -12,16 +12,20 @@
 
 #import <map>
 
-#import "CKTransactionalComponentDataSourceConfiguration.h"
+#import "CKTransactionalComponentDataSourceConfigurationInternal.h"
 #import "CKTransactionalComponentDataSourceStateInternal.h"
 #import "CKTransactionalComponentDataSourceChange.h"
 #import "CKTransactionalComponentDataSourceChangesetInternal.h"
 #import "CKTransactionalComponentDataSourceItemInternal.h"
 #import "CKTransactionalComponentDataSourceAppliedChanges.h"
+#import "CKBuildComponent.h"
+#import "CKComponentControllerAppearanceEvents.h"
+#import "CKComponentBoundsAnimationPredicates.h"
 #import "CKComponentLayout.h"
 #import "CKComponentProvider.h"
 #import "CKComponentScopeFrame.h"
 #import "CKComponentScopeRoot.h"
+#import "CKComponentScopeRootFactory.h"
 
 @implementation CKTransactionalComponentDataSourceChangesetModification
 {
@@ -101,17 +105,20 @@
 
   // Insert sections
   [newSections insertObjects:emptyMutableArrays([[_changeset insertedSections] count]) atIndexes:[_changeset insertedSections]];
-
+  
   // Insert items
   [[_changeset insertedItems] enumerateKeysAndObjectsUsingBlock:^(NSIndexPath *indexPath, id model, BOOL *stop) {
-    const CKBuildComponentResult result = CKBuildComponent([CKComponentScopeRoot rootWithListener:_stateListener], {}, ^{
+    const CKBuildComponentResult result =
+    CKBuildComponent(CKComponentScopeRootWithPredicates(_stateListener,
+                                                        configuration.componentPredicates,
+                                                        configuration.componentControllerPredicates), {}, ^{
       return [componentProvider componentForModel:model context:context];
     });
     const CKComponentLayout layout = CKComputeRootComponentLayout(result.component, sizeRange);
     insertedItemsBySection[indexPath.section][indexPath.item] =
     [[CKTransactionalComponentDataSourceItem alloc] initWithLayout:layout model:model scopeRoot:result.scopeRoot boundsAnimation:result.boundsAnimation];
   }];
-
+  
   for (const auto &sectionIt : insertedItemsBySection) {
     NSMutableIndexSet *indexes = [NSMutableIndexSet indexSet];
     NSMutableArray *items = [NSMutableArray array];

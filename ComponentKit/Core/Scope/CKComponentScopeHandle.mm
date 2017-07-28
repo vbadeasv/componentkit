@@ -10,26 +10,36 @@
 
 #import "CKComponentScopeHandle.h"
 
-#import "CKComponentController.h"
-#import "CKComponentControllerInternal.h"
-#import "CKComponentScopeRootInternal.h"
+#include <mutex>
+
+#import "CKComponentScopeRoot.h"
 #import "CKComponentSubclass.h"
 #import "CKComponentInternal.h"
 #import "CKInternalHelpers.h"
 #import "CKMutex.h"
+#import "CKScopedComponent.h"
+#import "CKScopedComponentController.h"
 #import "CKThreadLocalComponentScope.h"
+
+@interface CKScopedResponder ()
+- (void)addHandleToChain:(CKComponentScopeHandle *)component;
+@end
+
+@interface CKComponentScopeHandle ()
+@property (nonatomic, readonly, weak) id<CKScopedComponent> acquiredComponent;
+@end
 
 @implementation CKComponentScopeHandle
 {
   id<CKComponentStateListener> __weak _listener;
-  CKComponentController *_controller;
+  id<CKScopedComponentController> _controller;
   CKComponentScopeRootIdentifier _rootIdentifier;
   BOOL _acquired;
   BOOL _resolved;
-  CKComponent *__weak _acquiredComponent;
+  CKScopedResponder *_scopedResponder;
 }
 
-+ (CKComponentScopeHandle *)handleForComponent:(CKComponent *)component
++ (CKComponentScopeHandle *)handleForComponent:(id<CKScopedComponent>)component
 {
   CKThreadLocalComponentScope *currentScope = CKThreadLocalComponentScope::currentScope();
   if (currentScope == nullptr) {
@@ -38,14 +48,13 @@
 
   CKComponentScopeHandle *handle = currentScope->stack.top().frame.handle;
   if ([handle acquireFromComponent:component]) {
-    if (CKSubclassOverridesSelector([CKComponent class], [component class], @selector(boundsAnimationFromPreviousComponent:))) {
-      [currentScope->newScopeRoot registerBoundsAnimationComponent:component];
-    }
+    [currentScope->newScopeRoot registerComponent:component];
     return handle;
   }
-  CKCAssertNil(CKComponentControllerClassFromComponentClass([component class]), @"%@ has a controller but no scope! "
-               "Use CKComponentScope scope(self) before constructing the component or CKComponentTestRootScope "
+  CKCAssertNil([component.class controllerClass], @"%@ has a controller but no scope! "
+               "Make sure you construct your scope(self) before constructing the component or CKComponentTestRootScope "
                "at the start of the test.", [component class]);
+
   return nil;
 }
 
@@ -60,7 +69,8 @@
                  rootIdentifier:rootIdentifier
                  componentClass:componentClass
                           state:initialStateCreator ? initialStateCreator() : [componentClass initialState]
-                     controller:nil]; // controllers are built on resolution of the handle
+                     controller:nil  // Controllers are built on resolution of the handle.
+                scopedResponder:nil];// Scoped responders are created lazily. Once they exist, we use that reference for future handles.
 }
 
 - (instancetype)initWithListener:(id<CKComponentStateListener>)listener
@@ -68,7 +78,8 @@
                   rootIdentifier:(CKComponentScopeRootIdentifier)rootIdentifier
                   componentClass:(Class)componentClass
                            state:(id)state
-                      controller:(CKComponentController *)controller
+                      controller:(id<CKScopedComponentController>)controller
+                 scopedResponder:(CKScopedResponder *)scopedResponder
 {
   if (self = [super init]) {
     _listener = listener;
@@ -77,6 +88,9 @@
     _componentClass = componentClass;
     _state = state;
     _controller = controller;
+
+    _scopedResponder = scopedResponder;
+    [scopedResponder addHandleToChain:self];
   }
   return self;
 }
@@ -89,13 +103,14 @@
   for (auto it = range.first; it != range.second; ++it) {
     updatedState = it->second(updatedState);
   }
-  [componentScopeRoot registerAnnounceableEventsForController:_controller];
+  [componentScopeRoot registerComponentController:_controller];
   return [[CKComponentScopeHandle alloc] initWithListener:_listener
                                          globalIdentifier:_globalIdentifier
                                            rootIdentifier:_rootIdentifier
                                            componentClass:_componentClass
                                                     state:updatedState
-                                               controller:_controller];
+                                               controller:_controller
+                                          scopedResponder:_scopedResponder];
 }
 
 - (instancetype)newHandleToBeReacquiredDueToScopeCollision
@@ -105,10 +120,11 @@
                                            rootIdentifier:_rootIdentifier
                                            componentClass:_componentClass
                                                     state:_state
-                                               controller:_controller];
+                                               controller:_controller
+                                          scopedResponder:_scopedResponder];
 }
 
-- (CKComponentController *)controller
+- (id<CKScopedComponentController>)controller
 {
   CKAssert(_resolved, @"Requesting controller from scope handle before resolution. The controller will be nil.");
   return _controller;
@@ -121,24 +137,27 @@
 
 #pragma mark - State
 
-- (void)updateState:(id (^)(id))updateBlock mode:(CKUpdateMode)mode
+- (void)updateState:(id (^)(id))updateBlock
+           userInfo:(NSDictionary<NSString *,NSString *> *)userInfo
+               mode:(CKUpdateMode)mode
 {
   CKAssertNotNil(updateBlock, @"The update block cannot be nil");
   if (![NSThread isMainThread]) {
     dispatch_async(dispatch_get_main_queue(), ^{
-      [self updateState:updateBlock mode:mode];
+      [self updateState:updateBlock userInfo:userInfo mode:mode];
     });
     return;
   }
   [_listener componentScopeHandleWithIdentifier:_globalIdentifier
                                  rootIdentifier:_rootIdentifier
                           didReceiveStateUpdate:updateBlock
+                                       userInfo:userInfo
                                            mode:mode];
 }
 
 #pragma mark - Component Scope Handle Acquisition
 
-- (BOOL)acquireFromComponent:(CKComponent *)component
+- (BOOL)acquireFromComponent:(id<CKScopedComponent>)component
 {
   if (!_acquired && [component isMemberOfClass:_componentClass]) {
     _acquired = YES;
@@ -158,32 +177,94 @@
     CKThreadLocalComponentScope *currentScope = CKThreadLocalComponentScope::currentScope();
     CKAssert(currentScope != nullptr, @"Current scope should never be null here. Thread-local stack is corrupted.");
 
-    // A controller can be non-nil at this callsite during component re-generation because a new scope handle is
-    // generated in a new tree, that is acquired by a new component. We pass in the original component controller
-    // in that case, and we should avoid re-generating a new controller in that case.
-    _controller = newController(_acquiredComponent, currentScope->newScopeRoot);
+    const Class<CKScopedComponentController> controllerClass = [_acquiredComponent.class controllerClass];
+    if (controllerClass) {
+      // The compiler is not happy when I don't explicitly cast as (Class)
+      // See: http://stackoverflow.com/questions/21699755/create-an-instance-from-a-class-that-conforms-to-a-protocol
+      _controller = [[(Class)controllerClass alloc] initWithComponent:_acquiredComponent];
+      [currentScope->newScopeRoot registerComponentController:_controller];
+    }
   }
   _resolved = YES;
 }
 
-- (id)responder
+- (CKScopedResponder *)scopedResponder
 {
-  CKAssert(_resolved, @"Asking for responder from scope handle before resolution:%@", NSStringFromClass(_componentClass));
-  return _acquiredComponent;
+  if (!_scopedResponder) {
+    CKAssertFalse(_resolved);
+    _scopedResponder = [CKScopedResponder new];
+    [_scopedResponder addHandleToChain:self];
+  }
+
+  return _scopedResponder;
 }
 
-#pragma mark Controllers
+@end
 
-static CKComponentController *newController(CKComponent *component, CKComponentScopeRoot *root)
+@implementation CKScopedResponder
 {
-  Class controllerClass = CKComponentControllerClassFromComponentClass([component class]);
-  if (controllerClass) {
-    CKCAssert([controllerClass isSubclassOfClass:[CKComponentController class]],
-              @"%@ must inherit from CKComponentController", controllerClass);
-    CKComponentController *controller = [[controllerClass alloc] initWithComponent:component];
-    [root registerAnnounceableEventsForController:controller];
-    return controller;
+  std::vector<__weak CKComponentScopeHandle *> _handles;
+  std::mutex _mutex;
+}
+
+- (instancetype)init
+{
+  if (self = [super init]) {
+    static CKScopedResponderUniqueIdentifier nextIdentifier = 0;
+    _uniqueIdentifier = OSAtomicIncrement32(&nextIdentifier);
   }
+  
+  return self;
+}
+
+- (void)addHandleToChain:(CKComponentScopeHandle *)handle
+{
+  if (!handle) {
+    return;
+  }
+  
+  std::lock_guard<std::mutex> l(_mutex);
+  _handles.push_back(handle);
+}
+
+- (CKScopedResponderKey)keyForHandle:(CKComponentScopeHandle *)handle
+{
+  static const CKScopedResponderKey notFoundKey = INT_MAX;
+
+  if (handle == nil) {
+    return notFoundKey;
+  }
+
+  std::lock_guard<std::mutex> l(_mutex);
+  auto result = std::find(_handles.begin(), _handles.end(), handle);
+
+  if (result == _handles.end()) {
+    CKFailAssert(@"This scope handle is not associated with this Responder.");
+    return notFoundKey;
+  }
+
+  // Returning the index of an element in a vector: https://stackoverflow.com/a/15099743
+  return (int)std::distance(_handles.begin(), result);
+}
+
+- (id)responderForKey:(CKScopedResponderKey)key
+{
+  std::lock_guard<std::mutex> l(_mutex);
+
+  const size_t numberOfHandles = _handles.size();
+  if (key < 0 || key >= numberOfHandles) {
+    CKFailAssert(@"Invalid key \"%d\" for responder with %zu handles", key, numberOfHandles);
+    return nil;
+  }
+
+  for (int i = key; i < numberOfHandles; i++) {
+      const auto handle = _handles[i];
+      const id<CKScopedComponent> responder = handle.acquiredComponent;
+      if (responder != nil) {
+        return responder;
+      }
+  }
+  
   return nil;
 }
 

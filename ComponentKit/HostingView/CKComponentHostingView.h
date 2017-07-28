@@ -23,7 +23,10 @@
 /** Notified when the view's ideal size (measured by -sizeThatFits:) may have changed. */
 @property (nonatomic, weak) id<CKComponentHostingViewDelegate> delegate;
 
-/** Designated initializer. */
+/**
+ @param componentProvider See @protocol(CKComponentProvider).
+ @param sizeRangeProvider See @protocol(CKComponentSizeRangeProviding).
+ */
 - (instancetype)initWithComponentProvider:(Class<CKComponentProvider>)componentProvider
                         sizeRangeProvider:(id<CKComponentSizeRangeProviding>)sizeRangeProvider;
 
@@ -32,6 +35,10 @@
 
 /** Updates the context used to render the component. */
 - (void)updateContext:(id<NSObject>)context mode:(CKUpdateMode)mode;
+
+/** Appearance events to be funneled to the component tree. */
+- (void)hostingViewWillAppear;
+- (void)hostingViewDidDisappear;
 
 - (instancetype)init CK_NOT_DESIGNATED_INITIALIZER_ATTRIBUTE;
 - (instancetype)initWithFrame:(CGRect)frame CK_NOT_DESIGNATED_INITIALIZER_ATTRIBUTE;
