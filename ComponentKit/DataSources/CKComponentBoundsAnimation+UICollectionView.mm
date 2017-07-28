@@ -9,6 +9,7 @@
  */
 
 #import "CKComponentBoundsAnimation+UICollectionView.h"
+#import "CKAvailability.h"
 
 #import <vector>
 
@@ -77,7 +78,7 @@ void CKComponentBoundsAnimationApplyAfterCollectionViewBatchUpdates(id context, 
         }
         case UICollectionElementCategorySupplementaryView: {
           supplementaryElementIndexPathsToOriginalLayoutAttributes[indexPath] = attributes;
-          if (CGRectIntersectsRect(attributes.frame, visibleRect)) {
+          if (CK_AT_LEAST_IOS9 && CGRectIntersectsRect(attributes.frame, visibleRect)) {
             UIView *snapshotView =
             [[collectionView supplementaryViewForElementKind:attributes.representedElementKind atIndexPath:indexPath] snapshotViewAfterScreenUpdates:NO];
             if (snapshotView) {
@@ -102,6 +103,10 @@ void CKComponentBoundsAnimationApplyAfterCollectionViewBatchUpdates(id context, 
 - (void)applyBoundsAnimationToCollectionView:(const CKComponentBoundsAnimation &)animation
 {
   if (animation.duration == 0) {
+    return;
+  }
+  // Don't animate the collection view if it is not being displayed.
+  if (!_collectionView.window) {
     return;
   }
   // The documentation states that you must not use these functions with inserts or deletes. Let's be safe:
@@ -151,7 +156,7 @@ void CKComponentBoundsAnimationApplyAfterCollectionViewBatchUpdates(id context, 
       }
     }];
     [_supplementaryElementIndexPathsToOriginalLayoutAttributes enumerateKeysAndObjectsUsingBlock:^(NSIndexPath *indexPath, UICollectionViewLayoutAttributes *attributes, BOOL *stop) {
-      if (CGRectIntersectsRect(visibleRect, [[_collectionView layoutAttributesForSupplementaryElementOfKind:attributes.representedElementKind atIndexPath:indexPath] frame])) {
+      if (CK_AT_LEAST_IOS9 && CGRectIntersectsRect(visibleRect, [[_collectionView layoutAttributesForSupplementaryElementOfKind:attributes.representedElementKind atIndexPath:indexPath] frame])) {
         UICollectionReusableView *supplementaryView = [_collectionView supplementaryViewForElementKind:attributes.representedElementKind atIndexPath:indexPath];
         if (supplementaryView) {
           [supplementaryView setBounds:attributes.bounds];

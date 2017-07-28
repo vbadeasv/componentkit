@@ -20,6 +20,8 @@
 #import "CKStackPositionedLayout.h"
 #import "CKStackUnpositionedLayout.h"
 
+template class std::vector<CKStackLayoutComponentChild>;
+
 @implementation CKStackLayoutComponent
 {
   CKStackLayoutComponentStyle _style;
@@ -29,12 +31,12 @@
 + (instancetype)newWithView:(const CKComponentViewConfiguration &)view
                        size:(const CKComponentSize &)size
                       style:(const CKStackLayoutComponentStyle &)style
-                   children:(const std::vector<CKStackLayoutComponentChild> &)children
+                   children:(CKContainerWrapper<std::vector<CKStackLayoutComponentChild>> &&)children
 {
   CKStackLayoutComponent *c = [super newWithView:view size:size];
   if (c) {
     c->_style = style;
-    c->_children = children;
+    c->_children = children.take();
   }
   return c;
 }

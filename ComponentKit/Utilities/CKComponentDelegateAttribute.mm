@@ -14,7 +14,7 @@
 #import <objc/runtime.h>
 
 #import "CKAssert.h"
-#import "CKComponentViewInterface.h"
+#import "CKComponent+UIView.h"
 #import "CKComponentSubclass.h"
 
 @interface UIView (CKDelegateProxy)
@@ -24,7 +24,7 @@
 @end
 
 CKComponentViewAttributeValue CKComponentDelegateAttribute(SEL selector,
-                                                           CKComponentForwardedSelectors selectors)
+                                                           CKComponentForwardedSelectors selectors) noexcept
 {
   if (selector == NULL) {
     return {

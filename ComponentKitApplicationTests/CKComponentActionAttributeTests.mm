@@ -19,6 +19,14 @@
 #import <ComponentKit/CKComponentInternal.h>
 #import <ComponentKit/CKComponentLayout.h>
 
+@interface CKComponentActionAttributeTestObject : NSObject
+- (void)someAction;
+@end
+
+@implementation CKComponentActionAttributeTestObject
+- (void)someAction {}
+@end
+
 @interface CKComponentActionAttributeTests : XCTestCase
 @end
 
@@ -39,7 +47,10 @@
 
   CKTestActionComponent *outerComponent =
   [CKTestActionComponent
-   newWithBlock:^(CKComponent *sender, id context){ actionSender = sender; }
+   newWithSingleArgumentBlock:^(CKComponent *sender, id context) { actionSender = sender; }
+   secondArgumentBlock:^(CKComponent *sender, id obj1, id obj2) { }
+   primitiveArgumentBlock:^(CKComponent *sender, int value) { }
+   noArgumentBlock:^{ }
    component:controlComponent];
 
   // Must be mounted to send actions:
@@ -66,7 +77,10 @@
 
   CKTestActionComponent *outerComponent =
   [CKTestActionComponent
-   newWithBlock:^(CKComponent *sender, id context){ receivedAction = YES; }
+   newWithSingleArgumentBlock:^(CKComponent *sender, id context){ receivedAction = YES; }
+   secondArgumentBlock:^(CKComponent *sender, id obj1, id obj2) { }
+   primitiveArgumentBlock:^(CKComponent *sender, int value) { }
+   noArgumentBlock:^{ }
    component:controlComponent];
 
   // Must be mounted to send actions:
@@ -93,7 +107,10 @@
 
   CKTestActionComponent *outerComponent =
   [CKTestActionComponent
-   newWithBlock:^(CKComponent *sender, id context){ receivedAction = YES; }
+   newWithSingleArgumentBlock:^(CKComponent *sender, id context){ receivedAction = YES; }
+   secondArgumentBlock:^(CKComponent *sender, id obj1, id obj2) { }
+   primitiveArgumentBlock:^(CKComponent *sender, int value) { }
+   noArgumentBlock:^{ }
    component:controlComponent];
 
   // Must be mounted to send actions:
@@ -120,7 +137,10 @@
 
   CKTestActionComponent *outerComponent =
   [CKTestActionComponent
-   newWithBlock:^(CKComponent *sender, id context){ receivedAction = YES; }
+   newWithSingleArgumentBlock:^(CKComponent *sender, id context){ receivedAction = YES; }
+   secondArgumentBlock:^(CKComponent *sender, id obj1, id obj2) { }
+   primitiveArgumentBlock:^(CKComponent *sender, int value) { }
+   noArgumentBlock:^{ }
    component:controlComponent];
 
   // Must be mounted to send actions:
@@ -131,6 +151,33 @@
   XCTAssertFalse(receivedAction, @"Should not have received callback if no action specified");
 
   CKUnmountComponents(mountedComponents);
+}
+
+- (void)testControlActionsWithEqualTargetsHasEqualIdentifiers
+{
+  CKComponentActionAttributeTestObject *obj1 = [CKComponentActionAttributeTestObject new];
+  CKComponentViewAttributeValue attr1 = CKComponentActionAttribute({obj1, @selector(someAction)});
+  CKComponentViewAttributeValue attr2 = CKComponentActionAttribute({obj1, @selector(someAction)});
+
+  XCTAssertEqual(attr1.first.identifier, attr2.first.identifier);
+}
+
+- (void)testControlActionsWithNonEqualTargetsHasNonEqualIdentifiers
+{
+  CKComponentActionAttributeTestObject *obj1 = [CKComponentActionAttributeTestObject new];
+  CKComponentActionAttributeTestObject *obj2 = [CKComponentActionAttributeTestObject new];
+  CKComponentViewAttributeValue attr1 = CKComponentActionAttribute({obj1, @selector(someAction)});
+  CKComponentViewAttributeValue attr2 = CKComponentActionAttribute({obj2, @selector(someAction)});
+
+  XCTAssertNotEqual(attr1.first.identifier, attr2.first.identifier);
+}
+
+- (void)testControlActionsWithRawSelectorActionsHaveEqualIdentifiers
+{
+  CKComponentViewAttributeValue attr1 = CKComponentActionAttribute(@selector(someAction));
+  CKComponentViewAttributeValue attr2 = CKComponentActionAttribute(@selector(someAction));
+
+  XCTAssertEqual(attr1.first.identifier, attr2.first.identifier);
 }
 
 @end

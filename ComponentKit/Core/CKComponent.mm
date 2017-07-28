@@ -11,7 +11,6 @@
 #import "CKComponent.h"
 #import "CKComponentControllerInternal.h"
 #import "CKComponentInternal.h"
-#import "CKComponentMemoizer.h"
 #import "CKComponentSubclass.h"
 
 #import <ComponentKit/CKArgumentPrecondition.h>
@@ -19,14 +18,15 @@
 #import <ComponentKit/CKMacros.h>
 
 #import "CKAssert.h"
+#import "CKComponent+UIView.h"
 #import "CKComponentAccessibility.h"
 #import "CKComponentAnimation.h"
+#import "CKComponentBacktraceDescription.h"
 #import "CKComponentController.h"
 #import "CKComponentDebugController.h"
 #import "CKComponentLayout.h"
 #import "CKComponentScopeHandle.h"
 #import "CKComponentViewConfiguration.h"
-#import "CKComponentViewInterface.h"
 #import "CKInternalHelpers.h"
 #import "CKMountAnimationGuard.h"
 #import "CKWeakObjectContainer.h"
@@ -140,14 +140,23 @@ struct CKComponentMountInfo {
       CKAssert(v.ck_component == self, @"");
     }
 
-    const CGPoint anchorPoint = v.layer.anchorPoint;
-    [v setCenter:effectiveContext.position + CGPoint({size.width * anchorPoint.x, size.height * anchorPoint.y})];
-    [v setBounds:{v.bounds.origin, size}];
+    @try {
+      const CGPoint anchorPoint = v.layer.anchorPoint;
+      [v setCenter:effectiveContext.position + CGPoint({size.width * anchorPoint.x, size.height * anchorPoint.y})];
+      [v setBounds:{v.bounds.origin, size}];
+    } @catch (NSException *exception) {
+      NSString *const componentBacktraceDescription =
+      CKComponentBacktraceDescription(generateComponentBacktrace(supercomponent));
+      [NSException raise:exception.name
+                  format:@"%@ raised %@ during mount: %@\n%@", [self class], exception.name, exception.reason, componentBacktraceDescription];
+    }
 
     _mountInfo->viewContext = {v, {{0,0}, v.bounds.size}};
     return {.mountChildren = YES, .contextForChildren = effectiveContext.childContextForSubview(v, g.didBlockAnimations)};
   } else {
-    CKAssertNil(_mountInfo->view, @"Didn't expect to sometimes have a view and sometimes not have a view");
+    CKAssertNil(_mountInfo->view,
+                @"%@ should not have a mounted %@ after previously being mounted without a view.\n%@",
+                [self class], [_mountInfo->view class], CKComponentBacktraceDescription(generateComponentBacktrace(self)));
     _mountInfo->viewContext = {effectiveContext.viewManager->view, {effectiveContext.position, size}};
     return {.mountChildren = YES, .contextForChildren = effectiveContext};
   }
@@ -213,7 +222,9 @@ struct CKComponentMountInfo {
 {
   CK::Component::LayoutContext context(self, constrainedSize);
 
-  CKComponentLayout layout = CKMemoizeOrComputeLayout(self, constrainedSize, _size, parentSize);
+  CKComponentLayout layout = [self computeLayoutThatFits:constrainedSize
+                                        restrictedToSize:_size
+                                    relativeToParentSize:parentSize];
 
   CKAssert(layout.component == self, @"Layout computed by %@ should return self as component, but returned %@",
            [self class], [layout.component class]);
@@ -239,11 +250,6 @@ struct CKComponentMountInfo {
 - (CKComponentLayout)computeLayoutThatFits:(CKSizeRange)constrainedSize
 {
   return {self, constrainedSize.min};
-}
-
-- (BOOL)shouldMemoizeLayout
-{
-  return NO;
 }
 
 #pragma mark - Responder
@@ -294,7 +300,7 @@ static void *kRootComponentMountedViewKey = &kRootComponentMountedViewKey;
 - (void)updateState:(id (^)(id))updateBlock mode:(CKUpdateMode)mode
 {
   CKAssertNotNil(_scopeHandle, @"A component without state cannot update its state.");
-  CKAssertNotNil(updateBlock, @"Cannot enqueue component state modification with a nil block.");
+  CKAssertNotNil(updateBlock, @"Cannot enqueue component state modification with a nil update block.");
   [_scopeHandle updateState:updateBlock mode:mode];
 }
 
@@ -306,6 +312,17 @@ static void *kRootComponentMountedViewKey = &kRootComponentMountedViewKey;
 - (id<NSObject>)scopeFrameToken
 {
   return _scopeHandle ? @(_scopeHandle.globalIdentifier) : nil;
+}
+
+static NSArray<CKComponent *> *generateComponentBacktrace(CKComponent *component)
+{
+  NSMutableArray<CKComponent *> *const componentBacktrace = [NSMutableArray arrayWithObject:component];
+  while ([componentBacktrace lastObject]
+         && [componentBacktrace lastObject]->_mountInfo
+         && [componentBacktrace lastObject]->_mountInfo->supercomponent) {
+    [componentBacktrace addObject:[componentBacktrace lastObject]->_mountInfo->supercomponent];
+  }
+  return componentBacktrace;
 }
 
 @end

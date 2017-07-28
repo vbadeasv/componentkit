@@ -83,18 +83,22 @@ typedef std::array<CKStateConfiguration, 8> CKStateConfigurationArray;
   CGSize _intrinsicSize;
 }
 
-+ (instancetype)newWithTitles:(const std::unordered_map<UIControlState, NSString *> &)titles
-                  titleColors:(const std::unordered_map<UIControlState, UIColor *> &)titleColors
-                       images:(const std::unordered_map<UIControlState, UIImage *> &)images
-             backgroundImages:(const std::unordered_map<UIControlState, UIImage *> &)backgroundImages
++ (instancetype)newWithTitles:(CKContainerWrapper<std::unordered_map<UIControlState, NSString *>> &&)titlesParam
+                  titleColors:(CKContainerWrapper<std::unordered_map<UIControlState, UIColor *>> &&)titleColorsParam
+                       images:(CKContainerWrapper<std::unordered_map<UIControlState, UIImage *>> &&)imagesParam
+             backgroundImages:(CKContainerWrapper<std::unordered_map<UIControlState, UIImage *>> &&)backgroundImagesParam
                     titleFont:(UIFont *)titleFont
                      selected:(BOOL)selected
                       enabled:(BOOL)enabled
-                       action:(CKComponentAction)action
+                       action:(const CKTypedComponentAction<UIEvent *> &)action
                          size:(const CKComponentSize &)size
                    attributes:(const CKViewComponentAttributeValueMap &)passedAttributes
    accessibilityConfiguration:(CKButtonComponentAccessibilityConfiguration)accessibilityConfiguration
 {
+  const auto titles = titlesParam.take();
+  const auto titleColors = titleColorsParam.take();
+  const auto images = imagesParam.take();
+  const auto backgroundImages = backgroundImagesParam.take();
   static const CKComponentViewAttribute titleFontAttribute = {"CKButtonComponent.titleFont", ^(UIButton *button, id value){
     button.titleLabel.font = value;
   }};
@@ -161,7 +165,7 @@ typedef std::array<CKStateConfiguration, 8> CKStateConfigurationArray;
                             std::move(attributes),
                             {
                               .accessibilityLabel = accessibilityConfiguration.accessibilityLabel,
-                              .accessibilityComponentAction = enabled ? action : NULL
+                              .accessibilityComponentAction = enabled ? CKComponentAction(action) : NULL
                             }
                           }
                           size:size];

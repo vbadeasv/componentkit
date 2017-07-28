@@ -15,6 +15,7 @@
 #import <ComponentKit/CKMacros.h>
 
 #import "CKComponentAnimation.h"
+#import "CKComponentDebugController.h"
 #import "CKComponentHostingViewDelegate.h"
 #import "CKComponentLayout.h"
 #import "CKComponentRootView.h"
@@ -33,13 +34,15 @@ struct CKComponentHostingViewInputs {
   };
 };
 
-@interface CKComponentHostingView () <CKComponentStateListener>
+@interface CKComponentHostingView () <CKComponentStateListener, CKComponentDebugReflowListener>
 {
   Class<CKComponentProvider> _componentProvider;
   id<CKComponentSizeRangeProviding> _sizeRangeProvider;
 
   CKComponentHostingViewInputs _pendingInputs;
 
+  CKComponentBoundsAnimation _boundsAnimation;
+    
   CKComponent *_component;
   BOOL _componentNeedsUpdate;
   CKUpdateMode _requestedUpdateMode;
@@ -75,6 +78,8 @@ struct CKComponentHostingViewInputs {
 
     _componentNeedsUpdate = YES;
     _requestedUpdateMode = CKUpdateModeSynchronous;
+
+    [CKComponentDebugController registerReflowListener:self];
   }
   return self;
 }
@@ -104,7 +109,10 @@ struct CKComponentHostingViewInputs {
     if (_mountedLayout.component != _component || !CGSizeEqualToSize(_mountedLayout.size, size)) {
       _mountedLayout = CKComputeRootComponentLayout(_component, {size, size});
     }
-    _mountedComponents = [CKMountComponentLayout(_mountedLayout, _containerView, _mountedComponents, nil) copy];
+    CKComponentBoundsAnimationApply(_boundsAnimation, ^{
+      _mountedComponents = [CKMountComponentLayout(_mountedLayout, _containerView, _mountedComponents, nil) copy];
+    }, nil);
+    _boundsAnimation = {};
     _isMountingComponent = NO;
   }
 }
@@ -148,6 +156,13 @@ struct CKComponentHostingViewInputs {
   CKAssertMainThread();
   _pendingInputs.stateUpdates.insert({globalIdentifier, stateUpdate});
   [self _setNeedsUpdateWithMode:mode];
+}
+
+#pragma mark - CKComponentDebugController
+
+- (void)didReceiveReflowComponentsRequest
+{
+  [self _setNeedsUpdateWithMode:CKUpdateModeAsynchronous];
 }
 
 #pragma mark - Private
@@ -225,6 +240,7 @@ struct CKComponentHostingViewInputs {
   _pendingInputs.scopeRoot = result.scopeRoot;
   _pendingInputs.stateUpdates = {};
   _component = result.component;
+  _boundsAnimation = result.boundsAnimation;
   _componentNeedsUpdate = NO;
 }
 

@@ -12,9 +12,11 @@
 #import "CKTransactionalComponentDataSourceInternal.h"
 
 #import "CKAssert.h"
+#import "CKComponentDebugController.h"
 #import "CKComponentScopeRoot.h"
 #import "CKTransactionalComponentDataSourceChange.h"
 #import "CKTransactionalComponentDataSourceChangesetModification.h"
+#import "CKTransactionalComponentDataSourceChangesetVerification.h"
 #import "CKTransactionalComponentDataSourceConfiguration.h"
 #import "CKTransactionalComponentDataSourceConfigurationInternal.h"
 #import "CKTransactionalComponentDataSourceListenerAnnouncer.h"
@@ -34,7 +36,7 @@
 
 @end
 
-@interface CKTransactionalComponentDataSource () <CKComponentStateListener>
+@interface CKTransactionalComponentDataSource () <CKComponentStateListener, CKComponentDebugReflowListener>
 {
   CKTransactionalComponentDataSourceState *_state;
   CKTransactionalComponentDataSourceListenerAnnouncer *_announcer;
@@ -42,7 +44,7 @@
   CKComponentStateUpdatesMap _pendingAsynchronousStateUpdates;
   CKComponentStateUpdatesMap _pendingSynchronousStateUpdates;
 
-  NSMutableArray *_pendingAsynchronousModifications;
+  NSMutableArray<id<CKTransactionalComponentDataSourceStateModifying>> *_pendingAsynchronousModifications;
 
   NSThread *_workThreadOverride;
 }
@@ -59,6 +61,7 @@
     _workQueue = dispatch_queue_create("org.componentkit.CKTransactionalComponentDataSource", DISPATCH_QUEUE_SERIAL);
     _pendingAsynchronousModifications = [NSMutableArray array];
     _workThreadOverride = configuration.workThreadOverride;
+    [CKComponentDebugController registerReflowListener:self];
   }
   return self;
 }
@@ -74,6 +77,7 @@
               userInfo:(NSDictionary *)userInfo
 {
   CKAssertMainThread();
+  verifyChangeset(changeset, _state, _pendingAsynchronousModifications);
   id<CKTransactionalComponentDataSourceStateModifying> modification =
   [[CKTransactionalComponentDataSourceChangesetModification alloc] initWithChangeset:changeset stateListener:self userInfo:userInfo];
   switch (mode) {
@@ -161,6 +165,13 @@
   }
 }
 
+#pragma mark - CKComponentDebugReflowListener
+
+- (void)didReceiveReflowComponentsRequest
+{
+  [self reloadWithMode:CKUpdateModeAsynchronous userInfo:nil];
+}
+
 #pragma mark - Internal
 
 - (void)_enqueueModification:(id<CKTransactionalComponentDataSourceStateModifying>)modification
@@ -243,6 +254,23 @@
       [self _startFirstAsynchronousModification];
     }
   });
+}
+
+static void verifyChangeset(CKTransactionalComponentDataSourceChangeset *changeset,
+                            CKTransactionalComponentDataSourceState *state,
+                            NSArray<id<CKTransactionalComponentDataSourceStateModifying>> *pendingAsynchronousModifications)
+{
+#if CK_ASSERTIONS_ENABLED
+  const CKBadChangesetOperationType badChangesetOperationType = CKIsValidChangesetForState(changeset,
+                                                                                           state,
+                                                                                           pendingAsynchronousModifications);
+  CKCAssert(badChangesetOperationType == CKBadChangesetOperationTypeNone,
+            @"Bad operation: %@\n*** Changeset:\n%@\n*** Data source state:\n%@\n*** Pending data source modifications:\n%@",
+            CKHumanReadableBadChangesetOperationType(badChangesetOperationType),
+            changeset,
+            state,
+            pendingAsynchronousModifications);
+#endif
 }
 
 @end

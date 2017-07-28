@@ -11,6 +11,7 @@
 #import <vector>
 
 #import <ComponentKit/CKComponent.h>
+#import <ComponentKit/CKContainerWrapper.h>
 
 typedef NS_ENUM(NSUInteger, CKStackLayoutDirection) {
   CKStackLayoutDirectionVertical,
@@ -95,6 +96,8 @@ struct CKStackLayoutComponentChild {
   CKStackLayoutAlignSelf alignSelf;
 };
 
+extern template class std::vector<CKStackLayoutComponentChild>;
+
 /**
  A simple layout component that stacks a list of children vertically or horizontally.
 
@@ -126,6 +129,6 @@ struct CKStackLayoutComponentChild {
 + (instancetype)newWithView:(const CKComponentViewConfiguration &)view
                        size:(const CKComponentSize &)size
                       style:(const CKStackLayoutComponentStyle &)style
-                   children:(const std::vector<CKStackLayoutComponentChild> &)children;
+                   children:(CKContainerWrapper<std::vector<CKStackLayoutComponentChild>> &&)children;
 
 @end

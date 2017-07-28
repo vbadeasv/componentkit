@@ -41,7 +41,8 @@
 /** Creates a new, but identical, instance of the scope handle that will be reacquired due to a scope collision. */
 - (instancetype)newHandleToBeReacquiredDueToScopeCollision;
 
-- (void)updateState:(id (^)(id))updateFunction mode:(CKUpdateMode)mode;
+/** Enqueues a state update to be applied to the scope with the given mode. */
+- (void)updateState:(id (^)(id))updateBlock mode:(CKUpdateMode)mode;
 
 /** Informs the scope handle that it should complete its configuration. This will generate the controller */
 - (void)resolve;
@@ -51,7 +52,15 @@
  return nil until `resolve` is called.
  */
 @property (nonatomic, strong, readonly) CKComponentController *controller;
+
+@property (nonatomic, assign, readonly) Class componentClass;
+
 @property (nonatomic, strong, readonly) id state;
 @property (nonatomic, readonly) CKComponentScopeHandleIdentifier globalIdentifier;
+
+/**
+ Provides a responder corresponding with this scope handle. The controller will assert if called before resolution.
+ */
+- (id)responder;
 
 @end
