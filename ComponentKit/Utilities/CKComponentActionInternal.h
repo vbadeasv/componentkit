@@ -8,7 +8,7 @@
  *
  */
 
-#import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
 
 #import <vector>
 
@@ -27,6 +27,8 @@ typedef NS_ENUM(NSUInteger, CKComponentActionSendBehavior) {
   /** If the sender itself responds to the action, invoke the action on the sender. */
   CKComponentActionSendBehaviorStartAtSender,
 };
+
+class _CKTypedComponentDebugInitialTarget;
 
 #pragma mark - Action Base
 
@@ -79,6 +81,8 @@ public:
   SEL selector() const noexcept;
   dispatch_block_t block() const noexcept;
   std::string identifier() const noexcept;
+
+  friend _CKTypedComponentDebugInitialTarget;
 };
 
 #pragma mark - Typed Helpers
@@ -124,6 +128,35 @@ void CKConfigureInvocationWithArguments(NSInvocation *invocation, NSInteger inde
 }
 
 #pragma mark - Debug Helpers
+
+template<typename... T>
+class CKTypedComponentAction;
+
+/**
+ Get the list of control actions attached to the components view (if it has any), for debug purposes.
+
+ @return map of CKTypedComponentAction<> attached to the specifiec component.
+ */
+std::unordered_map<UIControlEvents, std::vector<CKTypedComponentAction<UIEvent *>>> _CKComponentDebugControlActionsForComponent(CKComponent *const component);
+
+/**
+ Access the initialTarget of an action, for debug purposes.
+ */
+class _CKTypedComponentDebugInitialTarget {
+private:
+  CKTypedComponentActionBase &_action;
+
+public:
+  _CKTypedComponentDebugInitialTarget(CKTypedComponentActionBase &action) : _action(action) { }
+
+  id get(CKComponent *sender) const {
+#if DEBUG
+    return _action.initialTarget(sender);
+#else
+    return nil;
+#endif
+  }
+};
 
 void _CKTypedComponentDebugCheckComponentScope(const CKComponentScope &scope, SEL selector, const std::vector<const char *> &typeEncodings) noexcept;
 

@@ -77,33 +77,25 @@ namespace CK {
   }
 
   /**
-   This function takes a vector and returns a new vector after adding an additional object between every entry in the vector that passes the predicate
+   This function takes a vector and returns a new vector after adding an additional object between every entry in the vector
    Example:
-   inputs: { 1, 2, 3, 4, 5, 6 }, factory ^(int) { return 0; } predicate: ^BOOL(int a) { return a%2 == 0; }
+   inputs: { 2, 4, 6 }, factory ^(int) { return 0; }
    output: { 2, 0, 4, 0, 6 }
    */
-  template <typename T, typename Func, typename Predicate>
-  auto intersperse(std::vector<T> a, Func &&factory, Predicate predicate) -> std::vector<T>
+  template <typename T, typename Func>
+  auto intersperse(const std::vector<T> &a, Func &&factory) -> std::vector<T>
   {
-    std::vector<T> newVector;
-
     if (a.size() < 2) {
-      return (a.size() == 1 && predicate(a.at(0))) ? a : newVector;
+      return a;
     }
 
-    for (int i = 0; i < a.size() - 1; i++) {
-      T currentA = a.at(i);
-      if (predicate(currentA)) {
-        newVector.push_back(currentA);
+    std::vector<T> newVector;
+    for (int i = 0; i < a.size(); i++) {
+      newVector.push_back(a.at(i));
+      if (i != a.size() - 1) {
         newVector.push_back(factory());
       }
     }
-
-    T lastA = a.at(a.size() - 1);
-    if (predicate(lastA)) {
-      newVector.push_back(lastA);
-    }
-
     return newVector;
   }
 };
@@ -156,7 +148,7 @@ inline BOOL CKObjectIsEqual(id<NSObject> obj, id<NSObject> otherObj)
 
 typedef BOOL (^CKEqualityComparisonBlock)(id object, id comparisonObject);
 
-/** 
+/**
  * Correctly executes the comparisonBlock for two objects, including cases one of the objects is nil or
  * of a different type (where `isEqual:` would return NO).
  */

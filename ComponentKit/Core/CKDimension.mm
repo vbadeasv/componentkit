@@ -54,8 +54,18 @@ CGFloat CKRelativeDimension::resolve(CGFloat autoSize, CGFloat parent) const noe
     case Type::POINTS:
       return _value;
     case Type::PERCENT:
-      return round(_value * parent);
+      return isnan(parent) ? autoSize : round(_value * parent);
   }
+}
+
+CKRelativeDimension::Type CKRelativeDimension::type(void) const noexcept
+{
+  return _type;
+}
+
+CGFloat CKRelativeDimension::value(void) const noexcept
+{
+  return _value;
 }
 
 size_t std::hash<CKRelativeDimension>::operator ()(const CKRelativeDimension &size) noexcept {

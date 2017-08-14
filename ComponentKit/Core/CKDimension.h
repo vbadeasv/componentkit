@@ -31,6 +31,7 @@
  "Points" - Just a number. It will always resolve to exactly this amount.
 
  "Percent" - Multiplied to a provided parent amount to resolve a final amount.
+ If the parent amount is undefined (NaN), it acts as if Auto size was specified instead.
 
  A number of convenience constructors have been provided to make using RelativeDimension straight-forward.
 
@@ -50,6 +51,11 @@ namespace std {
 
 class CKRelativeDimension {
 public:
+  enum class Type {
+    AUTO,
+    POINTS,
+    PERCENT,
+  };
   /** Default constructor is equivalent to "Auto". */
   constexpr CKRelativeDimension() noexcept : _type(Type::AUTO), _value(0) {}
   CKRelativeDimension(CGFloat points) noexcept : CKRelativeDimension(Type::POINTS, points) {}
@@ -64,13 +70,10 @@ public:
   bool operator==(const CKRelativeDimension &) const noexcept;
   NSString *description() const noexcept;
   CGFloat resolve(CGFloat autoSize, CGFloat parent) const noexcept;
+  Type type() const noexcept;
+  CGFloat value() const noexcept;
 
 private:
-  enum class Type {
-    AUTO,
-    POINTS,
-    PERCENT,
-  };
   CKRelativeDimension(Type type, CGFloat value)
     : _type(type), _value(value)
   {

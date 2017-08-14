@@ -13,7 +13,10 @@
 #import <ComponentKit/CKComponentViewConfiguration.h>
 
 @class CKComponent;
+@class CKComponentRootView;
 @class UIView;
+
+struct CKComponentLayout;
 
 /**
  CKComponentHierarchyDebugHelper allows
