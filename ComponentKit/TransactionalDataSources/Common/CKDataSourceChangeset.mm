@@ -7,8 +7,8 @@
  *  of patent rights can be found in the PATENTS file in the same directory.
  *
  */
-#import "CKTransactionalComponentDataSourceChangeset.h"
-#import "CKTransactionalComponentDataSourceChangesetInternal.h"
+#import "CKDataSourceChangeset.h"
+#import "CKDataSourceChangesetInternal.h"
 
 #import <UIKit/UITableView.h>
 
@@ -16,7 +16,7 @@
 #import "CKMacros.h"
 #import "CKAssert.h"
 
-@implementation CKTransactionalComponentDataSourceChangeset
+@implementation CKDataSourceChangeset
 
 - (instancetype)initWithUpdatedItems:(NSDictionary *)updatedItems
                         removedItems:(NSSet *)removedItems
@@ -86,12 +86,23 @@ static NSString *ReadableStringForSortedItemsDictionary(NSDictionary *dict)
   return mutableDescription;
 }
 
+- (BOOL)isEmpty
+{
+  return
+  (_insertedSections.count == 0 &&
+   _removedSections.count == 0 &&
+   _updatedItems.count == 0 &&
+   _movedItems.count == 0 &&
+   _insertedItems.count == 0 &&
+   _removedItems.count == 0);
+}
+
 - (BOOL)isEqual:(id)object
 {
-  if (![object isKindOfClass:[CKTransactionalComponentDataSourceChangeset class]]) {
+  if (![object isKindOfClass:[CKDataSourceChangeset class]]) {
     return NO;
   } else {
-    CKTransactionalComponentDataSourceChangeset *obj = (CKTransactionalComponentDataSourceChangeset *)object;
+    CKDataSourceChangeset *obj = (CKDataSourceChangeset *)object;
     return
     [_updatedItems isEqualToDictionary:obj.updatedItems] &&
     [_removedItems isEqualToSet:obj.removedItems] &&
@@ -117,7 +128,7 @@ static NSString *ReadableStringForSortedItemsDictionary(NSDictionary *dict)
 
 @end
 
-@implementation CKTransactionalComponentDataSourceChangesetBuilder
+@implementation CKDataSourceChangesetBuilder
 {
   NSDictionary *_updatedItems;
   NSSet *_removedItems;
@@ -135,9 +146,9 @@ static NSString *ReadableStringForSortedItemsDictionary(NSDictionary *dict)
 - (instancetype)withInsertedSections:(NSIndexSet *)insertedSections { _insertedSections = insertedSections; return self; }
 - (instancetype)withInsertedItems:(NSDictionary *)insertedItems { _insertedItems = insertedItems; return self; }
 
-- (CKTransactionalComponentDataSourceChangeset *)build
+- (CKDataSourceChangeset *)build
 {
-  return [[CKTransactionalComponentDataSourceChangeset alloc] initWithUpdatedItems:_updatedItems
+  return [[CKDataSourceChangeset alloc] initWithUpdatedItems:_updatedItems
                                                                       removedItems:_removedItems
                                                                    removedSections:_removedSections
                                                                         movedItems:_movedItems

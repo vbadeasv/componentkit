@@ -12,13 +12,18 @@
 #import "CKTransactionalComponentDataSourceInternal.h"
 
 #import "CKAssert.h"
+#import "CKComponentControllerEvents.h"
+#import "CKComponentControllerInternal.h"
 #import "CKComponentDebugController.h"
 #import "CKComponentScopeRoot.h"
+#import "CKComponentSubclass.h"
+#import "CKTransactionalComponentDataSourceAppliedChanges.h"
 #import "CKTransactionalComponentDataSourceChange.h"
 #import "CKTransactionalComponentDataSourceChangesetModification.h"
 #import "CKTransactionalComponentDataSourceChangesetVerification.h"
 #import "CKTransactionalComponentDataSourceConfiguration.h"
 #import "CKTransactionalComponentDataSourceConfigurationInternal.h"
+#import "CKTransactionalComponentDataSourceItem.h"
 #import "CKTransactionalComponentDataSourceListenerAnnouncer.h"
 #import "CKTransactionalComponentDataSourceReloadModification.h"
 #import "CKTransactionalComponentDataSourceStateInternal.h"
@@ -66,13 +71,20 @@
   return self;
 }
 
+- (void)dealloc
+{
+  [_state enumerateObjectsUsingBlock:^(CKTransactionalComponentDataSourceItem *item, NSIndexPath *, BOOL *stop) {
+    CKComponentScopeRootAnnounceControllerInvalidation([item scopeRoot]);
+  }];
+}
+
 - (CKTransactionalComponentDataSourceState *)state
 {
   CKAssertMainThread();
   return _state;
 }
 
-- (void)applyChangeset:(CKTransactionalComponentDataSourceChangeset *)changeset
+- (void)applyChangeset:(CKDataSourceChangeset *)changeset
                   mode:(CKUpdateMode)mode
               userInfo:(NSDictionary *)userInfo
 {
@@ -219,9 +231,34 @@
   CKAssertMainThread();
   CKTransactionalComponentDataSourceState *previousState = _state;
   _state = [change state];
+  
+  for (NSIndexPath *removedIndex in [[change appliedChanges] removedIndexPaths]) {
+    CKTransactionalComponentDataSourceItem *removedItem = [previousState objectAtIndexPath:removedIndex];
+    CKComponentScopeRootAnnounceControllerInvalidation([removedItem scopeRoot]);
+  }
+  
+  std::vector<CKComponent *> updatedComponents;
+  if ([_state.configuration alwaysSendComponentUpdate]) {
+    NSDictionary *finalIndexPathsForUpdatedItems = [[change appliedChanges] finalUpdatedIndexPaths];
+    for (NSIndexPath *updatedIndex in finalIndexPathsForUpdatedItems) {
+      CKTransactionalComponentDataSourceItem *item = [_state objectAtIndexPath:updatedIndex];
+      getComponentsFromLayout(item.layout, updatedComponents);
+    }
+    
+    for (auto updatedComponent: updatedComponents) {
+      [updatedComponent.controller willStartUpdateToComponent:updatedComponent];
+    }
+  }
+
   [_announcer transactionalComponentDataSource:self
                         didModifyPreviousState:previousState
                              byApplyingChanges:[change appliedChanges]];
+  
+  if ([_state.configuration alwaysSendComponentUpdate]) {
+    for (auto updatedComponent: updatedComponents) {
+      [updatedComponent.controller didFinishComponentUpdate];
+    }
+  }
 }
 
 - (void)_processStateUpdates
@@ -257,7 +294,17 @@
   });
 }
 
-static void verifyChangeset(CKTransactionalComponentDataSourceChangeset *changeset,
+static void getComponentsFromLayout(CKComponentLayout layout, std::vector<CKComponent *> &updatedComponents)
+{
+  updatedComponents.push_back(layout.component);
+  if (layout.children) {
+    for (const auto child : *layout.children) {
+      getComponentsFromLayout(child.layout, updatedComponents);
+    }
+  }
+}
+
+static void verifyChangeset(CKDataSourceChangeset *changeset,
                             CKTransactionalComponentDataSourceState *state,
                             NSArray<id<CKTransactionalComponentDataSourceStateModifying>> *pendingAsynchronousModifications)
 {

@@ -12,24 +12,24 @@
 
 #import <UIKit/UIKit.h>
 
-#import <ComponentKit/CKTransactionalComponentDataSourceChangesetInternal.h>
+#import <ComponentKit/CKDataSourceChangesetInternal.h>
 
-@interface CKTransactionalComponentDataSourceChangesetTests : XCTestCase
+@interface CKDataSourceChangesetTests : XCTestCase
 @end
 
-@implementation CKTransactionalComponentDataSourceChangesetTests
+@implementation CKDataSourceChangesetTests
 
 - (void)testChangesetEquality
 {
-  CKTransactionalComponentDataSourceChangeset *firstChangeset =
-  [[CKTransactionalComponentDataSourceChangeset alloc] initWithUpdatedItems:@{[NSIndexPath indexPathForItem:0 inSection:0] : @"A"}
+  CKDataSourceChangeset *firstChangeset =
+  [[CKDataSourceChangeset alloc] initWithUpdatedItems:@{[NSIndexPath indexPathForItem:0 inSection:0] : @"A"}
                                                                removedItems:[NSSet setWithObject:[NSIndexPath indexPathForItem:1 inSection:0]]
                                                             removedSections:[NSIndexSet indexSetWithIndex:2]
                                                                  movedItems:@{[NSIndexPath indexPathForItem:2 inSection:0] : [NSIndexPath indexPathForItem:3 inSection:0]}
                                                            insertedSections:[NSIndexSet indexSetWithIndex:1]
                                                               insertedItems:@{[NSIndexPath indexPathForItem:0 inSection:1] : @"B"}];
-  CKTransactionalComponentDataSourceChangeset *secondChangeset =
-  [[CKTransactionalComponentDataSourceChangeset alloc] initWithUpdatedItems:@{[NSIndexPath indexPathForItem:0 inSection:0] : @"A"}
+  CKDataSourceChangeset *secondChangeset =
+  [[CKDataSourceChangeset alloc] initWithUpdatedItems:@{[NSIndexPath indexPathForItem:0 inSection:0] : @"A"}
                                                                removedItems:[NSSet setWithObject:[NSIndexPath indexPathForItem:1 inSection:0]]
                                                             removedSections:[NSIndexSet indexSetWithIndex:2]
                                                                  movedItems:@{[NSIndexPath indexPathForItem:2 inSection:0] : [NSIndexPath indexPathForItem:3 inSection:0]}
@@ -40,21 +40,39 @@
 
 - (void)testChangesetsNotEqual
 {
-  CKTransactionalComponentDataSourceChangeset *firstChangeset =
-  [[CKTransactionalComponentDataSourceChangeset alloc] initWithUpdatedItems:@{[NSIndexPath indexPathForItem:0 inSection:0] : @"A"}
+  CKDataSourceChangeset *firstChangeset =
+  [[CKDataSourceChangeset alloc] initWithUpdatedItems:@{[NSIndexPath indexPathForItem:0 inSection:0] : @"A"}
                                                                removedItems:[NSSet setWithObject:[NSIndexPath indexPathForItem:1 inSection:0]]
                                                             removedSections:[NSIndexSet indexSetWithIndex:2]
                                                                  movedItems:@{[NSIndexPath indexPathForItem:2 inSection:0] : [NSIndexPath indexPathForItem:3 inSection:0]}
                                                            insertedSections:[NSIndexSet indexSetWithIndex:1]
                                                               insertedItems:@{[NSIndexPath indexPathForItem:0 inSection:1] : @"B"}];
-  CKTransactionalComponentDataSourceChangeset *secondChangeset =
-  [[CKTransactionalComponentDataSourceChangeset alloc] initWithUpdatedItems:@{[NSIndexPath indexPathForItem:0 inSection:0] : @"A"}
+  CKDataSourceChangeset *secondChangeset =
+  [[CKDataSourceChangeset alloc] initWithUpdatedItems:@{[NSIndexPath indexPathForItem:0 inSection:0] : @"A"}
                                                                removedItems:[NSSet setWithObject:[NSIndexPath indexPathForItem:1 inSection:0]]
                                                             removedSections:[NSIndexSet indexSetWithIndex:2]
                                                                  movedItems:@{[NSIndexPath indexPathForItem:2 inSection:0] : [NSIndexPath indexPathForItem:3 inSection:0]}
                                                            insertedSections:[NSIndexSet indexSetWithIndex:1]
                                                               insertedItems:@{[NSIndexPath indexPathForItem:0 inSection:1] : @"C"}];
   XCTAssertNotEqualObjects(firstChangeset, secondChangeset);
+}
+
+- (void)testChangesetIsEmpty
+{
+  XCTAssertTrue([[CKDataSourceChangesetBuilder transactionalComponentDataSourceChangeset] build].isEmpty);
+
+  XCTAssertFalse([[[CKDataSourceChangesetBuilder transactionalComponentDataSourceChangeset]
+                   withInsertedItems:@{[NSIndexPath indexPathForItem:0 inSection:0] : @"A"}] build].isEmpty);
+  XCTAssertFalse([[[CKDataSourceChangesetBuilder transactionalComponentDataSourceChangeset]
+                   withRemovedItems:[NSSet setWithObject:[NSIndexPath indexPathForItem:1 inSection:0]]] build].isEmpty);
+  XCTAssertFalse([[[CKDataSourceChangesetBuilder transactionalComponentDataSourceChangeset]
+                   withRemovedSections:[NSIndexSet indexSetWithIndex:2]] build].isEmpty);
+  XCTAssertFalse([[[CKDataSourceChangesetBuilder transactionalComponentDataSourceChangeset]
+                   withUpdatedItems:@{[NSIndexPath indexPathForItem:2 inSection:0] : [NSIndexPath indexPathForItem:3 inSection:0]}] build].isEmpty);
+  XCTAssertFalse([[[CKDataSourceChangesetBuilder transactionalComponentDataSourceChangeset]
+                   withInsertedSections:[NSIndexSet indexSetWithIndex:1]] build].isEmpty);
+  XCTAssertFalse([[[CKDataSourceChangesetBuilder transactionalComponentDataSourceChangeset]
+                   withInsertedItems:@{[NSIndexPath indexPathForItem:0 inSection:1] : @"C"}] build].isEmpty);
 }
 
 @end

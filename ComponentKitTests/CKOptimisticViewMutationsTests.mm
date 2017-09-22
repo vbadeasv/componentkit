@@ -10,7 +10,7 @@
 
 #import <XCTest/XCTest.h>
 
-#import <ComponentKitTestHelpers/CKComponentLifecycleTestController.h>
+#import <ComponentKitTestHelpers/CKComponentLifecycleTestHelper.h>
 
 #import <ComponentKit/CKButtonComponent.h>
 #import <ComponentKit/CKComponent.h>
@@ -27,7 +27,7 @@
 {
   CKComponent *blueComponent =
   [CKComponent newWithView:{[UIView class], {{@selector(setBackgroundColor:), [UIColor blueColor]}}} size:{}];
-  CKComponentLifecycleTestController *componentLifecycleTestController = [[CKComponentLifecycleTestController alloc] initWithComponentProvider:nil
+  CKComponentLifecycleTestHelper *componentLifecycleTestController = [[CKComponentLifecycleTestHelper alloc] initWithComponentProvider:nil
                                                                                                                              sizeRangeProvider:nil];
   [componentLifecycleTestController updateWithState:{
     .componentLayout = [blueComponent layoutThatFits:{{0, 0}, {10, 10}} parentSize:kCKComponentParentSizeUndefined]
@@ -52,7 +52,7 @@
 {
   CKComponent *blueComponent =
   [CKComponent newWithView:{[UIView class], {{@selector(setBackgroundColor:), [UIColor blueColor]}}} size:{}];
-  CKComponentLifecycleTestController *componentLifecycleTestController = [[CKComponentLifecycleTestController alloc] initWithComponentProvider:nil
+  CKComponentLifecycleTestHelper *componentLifecycleTestController = [[CKComponentLifecycleTestHelper alloc] initWithComponentProvider:nil
                                                                                                                              sizeRangeProvider:nil];
   [componentLifecycleTestController updateWithState:{
     .componentLayout = [blueComponent layoutThatFits:{{0, 0}, {10, 10}} parentSize:kCKComponentParentSizeUndefined]
@@ -78,18 +78,12 @@
 {
   CKButtonComponent *buttonComponent =
   [CKButtonComponent
-   newWithTitles:{{UIControlStateNormal, @"Original"}}
-   titleColors:{}
-   images:{}
-   backgroundImages:{}
-   titleFont:nil
-   selected:NO
-   enabled:YES
-   action:nullptr
-   size:{}
-   attributes:{}
-   accessibilityConfiguration:{}];
-  CKComponentLifecycleTestController *componentLifecycleTestController = [[CKComponentLifecycleTestController alloc] initWithComponentProvider:nil
+   newWithAction:nullptr
+   options:{
+     .titles = @"Original",
+   }
+  ];
+  CKComponentLifecycleTestHelper *componentLifecycleTestController = [[CKComponentLifecycleTestHelper alloc] initWithComponentProvider:nil
                                                                                                                              sizeRangeProvider:nil];
   [componentLifecycleTestController updateWithState:{
     .componentLayout = [buttonComponent layoutThatFits:{{0, 0}, {10, 10}} parentSize:kCKComponentParentSizeUndefined]

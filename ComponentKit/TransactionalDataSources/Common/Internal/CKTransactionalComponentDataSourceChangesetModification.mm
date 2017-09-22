@@ -15,11 +15,11 @@
 #import "CKTransactionalComponentDataSourceConfigurationInternal.h"
 #import "CKTransactionalComponentDataSourceStateInternal.h"
 #import "CKTransactionalComponentDataSourceChange.h"
-#import "CKTransactionalComponentDataSourceChangesetInternal.h"
+#import "CKDataSourceChangesetInternal.h"
 #import "CKTransactionalComponentDataSourceItemInternal.h"
 #import "CKTransactionalComponentDataSourceAppliedChanges.h"
 #import "CKBuildComponent.h"
-#import "CKComponentControllerAppearanceEvents.h"
+#import "CKComponentControllerEvents.h"
 #import "CKComponentBoundsAnimationPredicates.h"
 #import "CKComponentLayout.h"
 #import "CKComponentProvider.h"
@@ -33,7 +33,7 @@
   NSDictionary *_userInfo;
 }
 
-- (instancetype)initWithChangeset:(CKTransactionalComponentDataSourceChangeset *)changeset
+- (instancetype)initWithChangeset:(CKDataSourceChangeset *)changeset
                     stateListener:(id<CKComponentStateListener>)stateListener
                          userInfo:(NSDictionary *)userInfo
 {

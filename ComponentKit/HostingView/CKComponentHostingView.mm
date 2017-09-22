@@ -24,7 +24,7 @@
 #import "CKComponentScopeRootFactory.h"
 #import "CKComponentSizeRangeProviding.h"
 #import "CKComponentSubclass.h"
-#import "CKComponentControllerAppearanceEvents.h"
+#import "CKComponentControllerEvents.h"
 
 struct CKComponentHostingViewInputs {
   CKComponentScopeRoot *scopeRoot;
@@ -103,6 +103,7 @@ struct CKComponentHostingViewInputs {
 {
   CKAssertMainThread(); // UIKit should guarantee this
   CKUnmountComponents(_mountedComponents);
+  CKComponentScopeRootAnnounceControllerInvalidation(_pendingInputs.scopeRoot);
 }
 
 #pragma mark - Layout

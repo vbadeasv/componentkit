@@ -20,8 +20,8 @@
 #import "CKComponentLayout.h"
 #import "CKComponentDataSourceAttachController.h"
 #import "CKComponentBoundsAnimation+UICollectionView.h"
-#import "CKComponentControllerAppearanceEvents.h"
 #import "CKCollectionViewTransactionalDataSourceUserInfo.h"
+#import "CKComponentControllerEvents.h"
 
 @interface CKCollectionViewTransactionalDataSource () <
 UICollectionViewDataSource,
@@ -61,7 +61,7 @@ CKTransactionalComponentDataSourceListener
 
 #pragma mark - Changeset application
 
-- (void)applyChangeset:(CKTransactionalComponentDataSourceChangeset *)changeset
+- (void)applyChangeset:(CKDataSourceChangeset *)changeset
                   mode:(CKUpdateMode)mode
               animated:(BOOL)animated
               userInfo:(NSDictionary *)userInfo

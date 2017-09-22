@@ -14,6 +14,47 @@
 #import <ComponentKit/CKComponentAction.h>
 #import <ComponentKit/CKContainerWrapper.h>
 
+template <typename V>
+class CKButtonComponentStateMap {
+public:
+  using Map = std::unordered_map<UIControlState, V>;
+  /// Default constructor.
+  CKButtonComponentStateMap() {}
+  /// Single value (applied to `UIControlStateNormal`).
+  CKButtonComponentStateMap(const V v) : map({{UIControlStateNormal, v}}) {}
+  /// Multiple values for specific `UIControlState`s as inline list.
+  CKButtonComponentStateMap(std::initializer_list<typename Map::value_type> init) : map(std::move(init)) {}
+  /// Multiple values for specific `UIControlState`s as existing map.
+  CKButtonComponentStateMap(const std::unordered_map<UIControlState, V> &m) : map(m) {};
+  /// Get the states map.
+  const Map &getMap() const { return map; }
+private:
+  const Map map;
+};
+
+struct CKButtonComponentOptions {
+  /// The title of the button for different states.
+  CKButtonComponentStateMap<NSString *> titles;
+  /// The title colors of the button for different states.
+  CKButtonComponentStateMap<UIColor *> titleColors;
+  /// The images of the button for different states.
+  CKButtonComponentStateMap<UIImage *> images;
+  /// The background images of the button for different states.
+  CKButtonComponentStateMap<UIImage *> backgroundImages;
+  /// The title font the button.
+  UIFont *titleFont;
+  /// Wether the button is selected.
+  BOOL selected = NO;
+  /// Wether the button is enabled.
+  BOOL enabled = YES;
+  /// Additional attributes for the underlying UIBUtton
+  CKViewComponentAttributeValueMap attributes;
+  /// Accessibility context for the button.
+  CKComponentAccessibilityContext accessibilityContext;
+  /// Size restrictions for the button.
+  CKComponentSize size;
+};
+
 struct CKButtonComponentAccessibilityConfiguration {
   /** Accessibility label for the button. If one is not provided, the button title will be used as a label */
   NSString *accessibilityLabel;
@@ -27,16 +68,7 @@ struct CKButtonComponentAccessibilityConfiguration {
  */
 @interface CKButtonComponent : CKComponent
 
-+ (instancetype)newWithTitles:(CKContainerWrapper<std::unordered_map<UIControlState, NSString *>> &&)titles
-                  titleColors:(CKContainerWrapper<std::unordered_map<UIControlState, UIColor *>> &&)titleColors
-                       images:(CKContainerWrapper<std::unordered_map<UIControlState, UIImage *>> &&)images
-             backgroundImages:(CKContainerWrapper<std::unordered_map<UIControlState, UIImage *>> &&)backgroundImages
-                    titleFont:(UIFont *)titleFont
-                     selected:(BOOL)selected
-                      enabled:(BOOL)enabled
-                       action:(const CKTypedComponentAction<UIEvent *> &)action
-                         size:(const CKComponentSize &)size
-                   attributes:(const CKViewComponentAttributeValueMap &)attributes
-   accessibilityConfiguration:(CKButtonComponentAccessibilityConfiguration)accessibilityConfiguration;
++ (instancetype)newWithAction:(const CKTypedComponentAction<UIEvent *>)action
+                      options:(const CKButtonComponentOptions &)options;
 
 @end
