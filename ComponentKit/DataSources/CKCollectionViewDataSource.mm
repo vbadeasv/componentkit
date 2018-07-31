@@ -20,7 +20,6 @@
 #import "CKComponentLayout.h"
 #import "CKComponentDataSourceAttachController.h"
 #import "CKComponentBoundsAnimation+UICollectionView.h"
-#import "CKCollectionViewTransactionalDataSourceUserInfo.h"
 #import "CKComponentControllerEvents.h"
 
 @interface CKCollectionViewDataSource () <UICollectionViewDataSource, CKDataSourceListener>
@@ -60,15 +59,11 @@
 
 - (void)applyChangeset:(CKDataSourceChangeset *)changeset
                   mode:(CKUpdateMode)mode
-              animated:(BOOL)animated
               userInfo:(NSDictionary *)userInfo
 {
-  NSDictionary *wrappedUserInfo = [[[CKCollectionViewTransactionalDataSourceUserInfo alloc]
-                                    initWithUserInfo:userInfo
-                                    applyChangesWithAnimation:animated] pack];
   [_componentDataSource applyChangeset:changeset
                                   mode:mode
-                              userInfo:wrappedUserInfo];
+                              userInfo:userInfo];
 }
 
 static void applyChangesToCollectionView(UICollectionView *collectionView,
@@ -104,18 +99,9 @@ static void applyChangesToCollectionView(UICollectionView *collectionView,
                                          changes.insertedSections.count ||
                                          changes.removedSections.count);
   const BOOL changesIncludeOnlyUpdates = (changes.updatedIndexPaths.count && !changesIncludeNonUpdates);
-<<<<<<< HEAD:ComponentKit/DataSources/CKCollectionViewTransactionalDataSource.mm
-    
-  CKCollectionViewTransactionalDataSourceUserInfo *userInfo = [CKCollectionViewTransactionalDataSourceUserInfo
-                                                               unpack:changes.userInfo];
-  
-  CKTransactionalComponentDataSourceState *state = [_componentDataSource state];
-  
-=======
 
   CKDataSourceState *state = [_componentDataSource state];
 
->>>>>>> 617b97806bd14af825d52bb4ece15c39221f8335:ComponentKit/DataSources/CKCollectionViewDataSource.mm
   if (changesIncludeOnlyUpdates) {
     // We are not able to animate the updates individually, so we pick the
     // first bounds animation with a non-zero duration.
@@ -135,7 +121,7 @@ static void applyChangesToCollectionView(UICollectionView *collectionView,
     // We only apply the bounds animation if we found one with a duration.
     // Animating the collection view is an expensive operation and should be
     // avoided when possible.
-    if (boundsAnimation.duration && userInfo.applyChangesWithAnimation) {
+    if (boundsAnimation.duration) {
       id boundsAnimationContext = CKComponentBoundsAnimationPrepareForCollectionViewBatchUpdates(_collectionView);
       [UIView performWithoutAnimation:^{
         applyUpdatedState(state);
@@ -167,7 +153,7 @@ static void applyChangesToCollectionView(UICollectionView *collectionView,
     } completion:NULL];
   }
 }
-  
+
 - (void)_detachComponentLayoutForRemovedItemsAtIndexPaths:(NSSet *)removedIndexPaths
                                                   inState:(CKDataSourceState *)state
 {
@@ -192,24 +178,16 @@ static void applyChangesToCollectionView(UICollectionView *collectionView,
 #pragma mark - Reload
 
 - (void)reloadWithMode:(CKUpdateMode)mode
-              animated:(BOOL)animated
               userInfo:(NSDictionary *)userInfo
 {
-  NSDictionary *wrappedUserInfo = [[[CKCollectionViewTransactionalDataSourceUserInfo alloc]
-                                    initWithUserInfo:userInfo
-                                    applyChangesWithAnimation:animated] pack];
-  [_componentDataSource reloadWithMode:mode userInfo:wrappedUserInfo];
+  [_componentDataSource reloadWithMode:mode userInfo:userInfo];
 }
 
 - (void)updateConfiguration:(CKDataSourceConfiguration *)configuration
                        mode:(CKUpdateMode)mode
-                   animated:(BOOL)animated
                    userInfo:(NSDictionary *)userInfo
 {
-  NSDictionary *wrappedUserInfo = [[[CKCollectionViewTransactionalDataSourceUserInfo alloc]
-                                    initWithUserInfo:userInfo
-                                    applyChangesWithAnimation:animated] pack];
-  [_componentDataSource updateConfiguration:configuration mode:mode userInfo:wrappedUserInfo];
+  [_componentDataSource updateConfiguration:configuration mode:mode userInfo:userInfo];
 }
 
 #pragma mark - Appearance announcements

@@ -41,7 +41,6 @@
  */
 - (void)applyChangeset:(CKDataSourceChangeset *)changeset
                   mode:(CKUpdateMode)mode
-              animated:(BOOL)animated
               userInfo:(NSDictionary *)userInfo;
 
 /**
@@ -61,13 +60,11 @@
 
 /** @see `CKDataSource` */
 - (void)reloadWithMode:(CKUpdateMode)mode
-              animated:(BOOL)animated
               userInfo:(NSDictionary *)userInfo;
 
 /** @see `CKDataSource` */
 - (void)updateConfiguration:(CKDataSourceConfiguration *)configuration
                        mode:(CKUpdateMode)mode
-                   animated:(BOOL)animated
                    userInfo:(NSDictionary *)userInfo;
 
 /**
