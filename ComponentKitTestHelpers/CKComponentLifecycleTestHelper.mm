@@ -14,6 +14,7 @@
 #import <ComponentKit/CKComponentDataSourceAttachController.h>
 #import <ComponentKit/CKComponentLayout.h>
 #import <ComponentKit/CKComponentProvider.h>
+#import <ComponentKit/CKComponentScopeHandle.h>
 #import <ComponentKit/CKComponentScopeRoot.h>
 #import <ComponentKit/CKComponentScopeRootFactory.h>
 #import <ComponentKit/CKComponentSizeRangeProviding.h>
@@ -49,11 +50,11 @@
                                                              context:(id<NSObject>)context
 {
   CKAssertMainThread();
-  CKComponentScopeRoot *previousScopeRoot = _previousScopeRoot ?: CKComponentScopeRootWithDefaultPredicates(self);
+  CKComponentScopeRoot *previousScopeRoot = _previousScopeRoot ?: CKComponentScopeRootWithDefaultPredicates(self, nil);
   CKBuildComponentResult result = CKBuildComponent(previousScopeRoot, _pendingStateUpdates, ^{
     return [_componentProvider componentForModel:model context:context];
   });
-  const CKComponentLayout componentLayout = CKComputeRootComponentLayout(result.component, constrainedSize);
+  const CKComponentLayout componentLayout = CKComputeRootComponentLayout(result.component, constrainedSize).layout();
   _previousScopeRoot = result.scopeRoot;
   _pendingStateUpdates.clear();
   return {
@@ -87,10 +88,11 @@
 {
   CKAssertMainThread();
   _mountedView = view;
-  [_componentDataSourceAttachController attachComponentLayout:_state.componentLayout
+  [_componentDataSourceAttachController attachComponentRootLayout:CKComponentRootLayout {_state.componentLayout}
                                           withScopeIdentifier:_state.scopeRoot.globalIdentifier
                                           withBoundsAnimation:_state.boundsAnimation
-                                                       toView:view];
+                                                       toView:view
+                                            analyticsListener:nil];
 }
 
 - (void)detachFromView
@@ -106,15 +108,15 @@
   return _state;
 }
 
-- (void)componentScopeHandleWithIdentifier:(CKComponentScopeHandleIdentifier)globalIdentifier
-                            rootIdentifier:(CKComponentScopeRootIdentifier)rootIdentifier
-                     didReceiveStateUpdate:(id (^)(id))stateUpdate
-                                  userInfo:(NSDictionary<NSString *,NSString *> *)userInfo
-                                      mode:(CKUpdateMode)mode
+- (void)componentScopeHandle:(CKComponentScopeHandle *)handle
+              rootIdentifier:(CKComponentScopeRootIdentifier)rootIdentifier
+       didReceiveStateUpdate:(id (^)(id))stateUpdate
+                    metadata:(const CKStateUpdateMetadata)metadata
+                        mode:(CKUpdateMode)mode
 {
   CKAssertMainThread();
 
-  _pendingStateUpdates[globalIdentifier].push_back(stateUpdate);
+  _pendingStateUpdates[handle].push_back(stateUpdate);
   const CKSizeRange constrainedSize = _sizeRangeProvider ? [_sizeRangeProvider sizeRangeForBoundingSize:_state.constrainedSize.max] : _state.constrainedSize;
   [self updateWithState:[self prepareForUpdateWithModel:_state.model
                                         constrainedSize:constrainedSize

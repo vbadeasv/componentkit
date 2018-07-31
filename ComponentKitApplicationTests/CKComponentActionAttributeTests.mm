@@ -50,12 +50,12 @@
    newWithSingleArgumentBlock:^(CKComponent *sender, id context) { actionSender = sender; }
    secondArgumentBlock:^(CKComponent *sender, id obj1, id obj2) { }
    primitiveArgumentBlock:^(CKComponent *sender, int value) { }
-   noArgumentBlock:^{ }
+   noArgumentBlock:^(CKComponent *sender) { }
    component:controlComponent];
 
   // Must be mounted to send actions:
   UIView *rootView = [UIView new];
-  NSSet *mountedComponents = CKMountComponentLayout([outerComponent layoutThatFits:{} parentSize:{}], rootView, nil, nil);
+  NSSet *mountedComponents = CKMountComponentLayout([outerComponent layoutThatFits:{} parentSize:{}], rootView, nil, nil).mountedComponents;
 
   [(UIControl *)[controlComponent viewContext].view sendActionsForControlEvents:UIControlEventTouchUpInside];
   XCTAssert(actionSender == controlComponent, @"Sender should be the component that created the control");
@@ -80,12 +80,12 @@
    newWithSingleArgumentBlock:^(CKComponent *sender, id context){ receivedAction = YES; }
    secondArgumentBlock:^(CKComponent *sender, id obj1, id obj2) { }
    primitiveArgumentBlock:^(CKComponent *sender, int value) { }
-   noArgumentBlock:^{ }
+   noArgumentBlock:^(CKComponent *sender) { }
    component:controlComponent];
 
   // Must be mounted to send actions:
   UIView *rootView = [UIView new];
-  NSSet *mountedComponents = CKMountComponentLayout([outerComponent layoutThatFits:{} parentSize:{}], rootView, nil, nil);
+  NSSet *mountedComponents = CKMountComponentLayout([outerComponent layoutThatFits:{} parentSize:{}], rootView, nil, nil).mountedComponents;
 
   [(UIControl *)[controlComponent viewContext].view sendActionsForControlEvents:UIControlEventValueChanged];
   XCTAssertTrue(receivedAction, @"Should have received action");
@@ -114,12 +114,12 @@
    newWithSingleArgumentBlock:^(CKComponent *sender, id context){ actionCount++; }
    secondArgumentBlock:^(CKComponent *sender, id obj1, id obj2) { }
    primitiveArgumentBlock:^(CKComponent *sender, int value) { }
-   noArgumentBlock:^{ }
+   noArgumentBlock:^(CKComponent *sender) { }
    component:controlComponent];
 
   // Must be mounted to send actions:
   UIView *rootView = [UIView new];
-  NSSet *mountedComponents = CKMountComponentLayout([outerComponent layoutThatFits:{} parentSize:{}], rootView, nil, nil);
+  NSSet *mountedComponents = CKMountComponentLayout([outerComponent layoutThatFits:{} parentSize:{}], rootView, nil, nil).mountedComponents;
 
   [(UIControl *)[controlComponent viewContext].view sendActionsForControlEvents:UIControlEventValueChanged];
   XCTAssertTrue(actionCount == 1, @"Should have received action for UIControlEventValueChanged");
@@ -148,12 +148,12 @@
    newWithSingleArgumentBlock:^(CKComponent *sender, id context){ receivedAction = YES; }
    secondArgumentBlock:^(CKComponent *sender, id obj1, id obj2) { }
    primitiveArgumentBlock:^(CKComponent *sender, int value) { }
-   noArgumentBlock:^{ }
+   noArgumentBlock:^(CKComponent *sender) { }
    component:controlComponent];
 
   // Must be mounted to send actions:
   UIView *rootView = [UIView new];
-  NSSet *mountedComponents = CKMountComponentLayout([outerComponent layoutThatFits:{} parentSize:{}], rootView, nil, nil);
+  NSSet *mountedComponents = CKMountComponentLayout([outerComponent layoutThatFits:{} parentSize:{}], rootView, nil, nil).mountedComponents;
 
   [(UIControl *)[controlComponent viewContext].view sendActionsForControlEvents:UIControlEventTouchDragEnter];
   XCTAssertFalse(receivedAction, @"Should not have received callback for UIControlEventTouchDragEnter");
@@ -178,12 +178,12 @@
    newWithSingleArgumentBlock:^(CKComponent *sender, id context){ receivedAction = YES; }
    secondArgumentBlock:^(CKComponent *sender, id obj1, id obj2) { }
    primitiveArgumentBlock:^(CKComponent *sender, int value) { }
-   noArgumentBlock:^{ }
+   noArgumentBlock:^(CKComponent *sender) { }
    component:controlComponent];
 
   // Must be mounted to send actions:
   UIView *rootView = [UIView new];
-  NSSet *mountedComponents = CKMountComponentLayout([outerComponent layoutThatFits:{} parentSize:{}], rootView, nil, nil);
+  NSSet *mountedComponents = CKMountComponentLayout([outerComponent layoutThatFits:{} parentSize:{}], rootView, nil, nil).mountedComponents;
 
   [(UIControl *)[controlComponent viewContext].view sendActionsForControlEvents:UIControlEventTouchUpInside];
   XCTAssertFalse(receivedAction, @"Should not have received callback if no action specified");

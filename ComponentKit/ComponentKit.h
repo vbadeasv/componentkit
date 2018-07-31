@@ -30,11 +30,14 @@
 #import <ComponentKit/CKCompositeComponent.h>
 #import <ComponentKit/CKDimension.h>
 #import <ComponentKit/CKComponentScope.h>
+#import <ComponentKit/CKRenderComponent.h>
+#import <ComponentKit/CKRenderWithChildrenComponent.h>
 //Data sources
 #import <ComponentKit/CKComponentProvider.h>
-#import <ComponentKit/CKCollectionViewTransactionalDataSource.h>
+#import <ComponentKit/CKCollectionViewDataSource.h>
 #import <ComponentKit/CKDataSourceChangeset.h>
-#import <ComponentKit/CKTransactionalComponentDataSourceConfiguration.h>
+#import <ComponentKit/CKDataSourceConfiguration.h>
+#import <ComponentKit/CKDataSourceQOS.h>
 //Hosting views
 #import <ComponentKit/CKComponentFlexibleSizeRangeProvider.h>
 #import <ComponentKit/CKComponentHostingView.h>

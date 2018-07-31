@@ -11,10 +11,12 @@
 #import <vector>
 
 #import <UIKit/UIKit.h>
+#import <ComponentKit/CKComponentControllerProtocol.h>
+#import <ComponentKit/CKComponentLayout.h>
 
 @class CKComponent;
 
-@interface CKComponentController<__covariant ComponentType:CKComponent *> : NSObject
+@interface CKComponentController<__covariant ComponentType:CKComponent *> : NSObject <CKComponentControllerProtocol>
 
 /** The controller's component is not mounted, but is about to be. */
 - (void)willMount NS_REQUIRES_SUPER;
@@ -57,8 +59,14 @@
 /** Corresponds to -didEndDisplayingCell:for{Row|Item}AtIndexPath:. Not invoked for CKComponentHostingViews. */
 - (void)componentTreeDidDisappear NS_REQUIRES_SUPER;
 
-/** Is called on main thread prior to controller deallocation **/
+/** Called on the main thread prior to controller deallocation **/
 - (void)invalidateController NS_REQUIRES_SUPER;
+
+/**
+ Called on the main thread when a new component has been created and its layout has been calculated.
+ This layout will be used during the next mount (unless another state update will be triggered).
+ */
+- (void)didPrepareLayout:(const CKComponentLayout &)layout forComponent:(CKComponent *)component;
 
 /** The current version of the component. */
 @property (nonatomic, weak, readonly) ComponentType component;
@@ -82,7 +90,7 @@
  */
 - (BOOL)canPerformAction:(SEL)action withSender:(id)sender;
 
-/** 
+/**
  Initializes a controller with the first generation of component. You should not directly initialize a controller,
  they are initialized for you by the infrastructure.
  */
@@ -91,4 +99,8 @@
 - (instancetype)init NS_UNAVAILABLE;
 + (instancetype)new NS_UNAVAILABLE;
 
+@end
+
+@interface CKComponentControllerContext: NSObject
++ (instancetype)newWithHandleAnimationsInController:(BOOL)handleAnimationsInController;
 @end

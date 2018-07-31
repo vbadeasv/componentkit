@@ -10,6 +10,10 @@
 
 #import <Foundation/Foundation.h>
 
+#import <ComponentKit/CKAnimationApplicator.h>
+#import <ComponentKit/CKComponentDataSourceAttachController.h>
+#import <ComponentKit/CKComponentScopeTypes.h>
+
 /** This is exposed for unit tests. */
 @interface CKComponentDataSourceAttachState : NSObject
 
@@ -18,9 +22,11 @@
 
 - (instancetype)initWithScopeIdentifier:(CKComponentScopeRootIdentifier)scopeIdentifier
                       mountedComponents:(NSSet *)mountedComponents
-                                 layout:(const CKComponentLayout &)layout;
+                             rootLayout:(const CKComponentRootLayout &)rootLayout
+                    animationApplicator:(const std::shared_ptr<CK::AnimationApplicator<CK::ComponentAnimationsController>> &)animationApplicator;
 
-- (const CKComponentLayout &)layout;
+- (const CKComponentRootLayout &)rootLayout;
+- (const std::shared_ptr<CK::AnimationApplicator<CK::ComponentAnimationsController>> &)animationApplicator;
 
 @end
 

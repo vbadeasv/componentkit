@@ -17,29 +17,26 @@
 #import "CKComponentInternal.h"
 #import "CKInternalHelpers.h"
 #import "CKMutex.h"
-#import "CKScopedComponent.h"
-#import "CKScopedComponentController.h"
+#import "CKComponentProtocol.h"
+#import "CKComponentControllerProtocol.h"
 #import "CKThreadLocalComponentScope.h"
+#import "CKRenderComponentProtocol.h"
 
 @interface CKScopedResponder ()
 - (void)addHandleToChain:(CKComponentScopeHandle *)component;
 @end
 
-@interface CKComponentScopeHandle ()
-@property (nonatomic, readonly, weak) id<CKScopedComponent> acquiredComponent;
-@end
-
 @implementation CKComponentScopeHandle
 {
   id<CKComponentStateListener> __weak _listener;
-  id<CKScopedComponentController> _controller;
+  id<CKComponentControllerProtocol> _controller;
   CKComponentScopeRootIdentifier _rootIdentifier;
   BOOL _acquired;
   BOOL _resolved;
   CKScopedResponder *_scopedResponder;
 }
 
-+ (CKComponentScopeHandle *)handleForComponent:(id<CKScopedComponent>)component
++ (CKComponentScopeHandle *)handleForComponent:(id<CKComponentProtocol>)component
 {
   CKThreadLocalComponentScope *currentScope = CKThreadLocalComponentScope::currentScope();
   if (currentScope == nullptr) {
@@ -51,7 +48,9 @@
     [currentScope->newScopeRoot registerComponent:component];
     return handle;
   }
-  CKCAssertNil([component.class controllerClass], @"%@ has a controller but no scope! "
+  CKCAssertNil([component.class controllerClass] &&
+               ![component conformsToProtocol:@protocol(CKRenderComponentProtocol)]
+                , @"%@ has a controller but no scope! "
                "Make sure you construct your scope(self) before constructing the component or CKComponentTestRootScope "
                "at the start of the test.", [component class]);
 
@@ -61,25 +60,28 @@
 - (instancetype)initWithListener:(id<CKComponentStateListener>)listener
                   rootIdentifier:(CKComponentScopeRootIdentifier)rootIdentifier
                   componentClass:(Class)componentClass
-             initialStateCreator:(id (^)(void))initialStateCreator
+                    initialState:(id)initialState
+                          parent:(CKComponentScopeHandle *)parent
 {
   static int32_t nextGlobalIdentifier = 0;
   return [self initWithListener:listener
                globalIdentifier:OSAtomicIncrement32(&nextGlobalIdentifier)
                  rootIdentifier:rootIdentifier
                  componentClass:componentClass
-                          state:initialStateCreator ? initialStateCreator() : [componentClass initialState]
+                          state:initialState
                      controller:nil  // Controllers are built on resolution of the handle.
-                scopedResponder:nil];// Scoped responders are created lazily. Once they exist, we use that reference for future handles.
+                scopedResponder:nil  // Scoped responders are created lazily. Once they exist, we use that reference for future handles.
+                         parent:parent];
 }
 
 - (instancetype)initWithListener:(id<CKComponentStateListener>)listener
                 globalIdentifier:(CKComponentScopeHandleIdentifier)globalIdentifier
                   rootIdentifier:(CKComponentScopeRootIdentifier)rootIdentifier
-                  componentClass:(Class)componentClass
+                  componentClass:(Class<CKComponentProtocol>)componentClass
                            state:(id)state
-                      controller:(id<CKScopedComponentController>)controller
+                      controller:(id<CKComponentControllerProtocol>)controller
                  scopedResponder:(CKScopedResponder *)scopedResponder
+                          parent:(CKComponentScopeHandle *)parent
 {
   if (self = [super init]) {
     _listener = listener;
@@ -88,6 +90,7 @@
     _componentClass = componentClass;
     _state = state;
     _controller = controller;
+    _parent = parent;
 
     _scopedResponder = scopedResponder;
     [scopedResponder addHandleToChain:self];
@@ -97,9 +100,10 @@
 
 - (instancetype)newHandleWithStateUpdates:(const CKComponentStateUpdateMap &)stateUpdates
                        componentScopeRoot:(CKComponentScopeRoot *)componentScopeRoot
+                                   parent:(CKComponentScopeHandle *)parent
 {
   id updatedState = _state;
-  const auto pendingUpdatesIt = stateUpdates.find(_globalIdentifier);
+  const auto pendingUpdatesIt = stateUpdates.find(self);
   if (pendingUpdatesIt != stateUpdates.end()) {
     for (auto pendingUpdate: pendingUpdatesIt->second) {
       if (pendingUpdate != nil) {
@@ -115,7 +119,8 @@
                                            componentClass:_componentClass
                                                     state:updatedState
                                                controller:_controller
-                                          scopedResponder:_scopedResponder];
+                                          scopedResponder:_scopedResponder
+                                                   parent:parent];
 }
 
 - (instancetype)newHandleToBeReacquiredDueToScopeCollision
@@ -126,10 +131,11 @@
                                            componentClass:_componentClass
                                                     state:_state
                                                controller:_controller
-                                          scopedResponder:_scopedResponder];
+                                          scopedResponder:_scopedResponder
+                                                   parent:_parent];
 }
 
-- (id<CKScopedComponentController>)controller
+- (id<CKComponentControllerProtocol>)controller
 {
   CKAssert(_resolved, @"Requesting controller from scope handle before resolution. The controller will be nil.");
   return _controller;
@@ -143,26 +149,34 @@
 #pragma mark - State
 
 - (void)updateState:(id (^)(id))updateBlock
-           userInfo:(NSDictionary<NSString *,NSString *> *)userInfo
+           metadata:(const CKStateUpdateMetadata &)metadata
                mode:(CKUpdateMode)mode
 {
   CKAssertNotNil(updateBlock, @"The update block cannot be nil");
   if (![NSThread isMainThread]) {
+    // Passing a const& into a block is scary, make a local copy to be safe.
+    const auto metadataCopy = metadata;
     dispatch_async(dispatch_get_main_queue(), ^{
-      [self updateState:updateBlock userInfo:userInfo mode:mode];
+      [self updateState:updateBlock metadata:metadataCopy mode:mode];
     });
     return;
   }
-  [_listener componentScopeHandleWithIdentifier:_globalIdentifier
-                                 rootIdentifier:_rootIdentifier
-                          didReceiveStateUpdate:updateBlock
-                                       userInfo:userInfo
-                                           mode:mode];
+  [_listener componentScopeHandle:self
+                   rootIdentifier:_rootIdentifier
+            didReceiveStateUpdate:updateBlock
+                         metadata:metadata
+                             mode:mode];
+}
+
+- (void)replaceState:(id)state
+{
+  CKAssertFalse(_resolved);
+  _state = state;
 }
 
 #pragma mark - Component Scope Handle Acquisition
 
-- (BOOL)acquireFromComponent:(id<CKScopedComponent>)component
+- (BOOL)acquireFromComponent:(id<CKComponentProtocol>)component
 {
   if (!_acquired && [component isMemberOfClass:_componentClass]) {
     _acquired = YES;
@@ -171,6 +185,14 @@
   } else {
     return NO;
   }
+}
+
+- (void)forceAcquireFromComponent:(id<CKComponentProtocol>)component
+{
+  CKAssert([component isMemberOfClass:_componentClass], @"%@ has to be a member of %@ class", component, _componentClass);
+  CKAssert(!_acquired, @"scope handle cannot be acquired twice");
+  _acquired = YES;
+  _acquiredComponent = component;
 }
 
 - (void)resolve
@@ -182,7 +204,7 @@
     CKThreadLocalComponentScope *currentScope = CKThreadLocalComponentScope::currentScope();
     CKAssert(currentScope != nullptr, @"Current scope should never be null here. Thread-local stack is corrupted.");
 
-    const Class<CKScopedComponentController> controllerClass = [_acquiredComponent.class controllerClass];
+    const Class<CKComponentControllerProtocol> controllerClass = [_acquiredComponent.class controllerClass];
     if (controllerClass) {
       // The compiler is not happy when I don't explicitly cast as (Class)
       // See: http://stackoverflow.com/questions/21699755/create-an-instance-from-a-class-that-conforms-to-a-protocol
@@ -218,7 +240,7 @@
     static CKScopedResponderUniqueIdentifier nextIdentifier = 0;
     _uniqueIdentifier = OSAtomicIncrement32(&nextIdentifier);
   }
-  
+
   return self;
 }
 
@@ -227,7 +249,7 @@
   if (!handle) {
     return;
   }
-  
+
   std::lock_guard<std::mutex> l(_mutex);
   _handles.push_back(handle);
 }
@@ -264,12 +286,12 @@
 
   for (int i = key; i < numberOfHandles; i++) {
       const auto handle = _handles[i];
-      const id<CKScopedComponent> responder = handle.acquiredComponent;
+      const id<CKComponentProtocol> responder = handle.acquiredComponent;
       if (responder != nil) {
         return responder;
       }
   }
-  
+
   return nil;
 }
 

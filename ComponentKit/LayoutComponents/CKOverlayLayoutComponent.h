@@ -11,6 +11,8 @@
 #import <ComponentKit/CKComponent.h>
 
 /**
+ @uidocs https://fburl.com/CKOverlayLayoutComponent:4ad6
+
  This component lays out a single component and then overlays a component on top of it streched to its size
  */
 @interface CKOverlayLayoutComponent : CKComponent

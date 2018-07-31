@@ -12,6 +12,8 @@
 
 #import "ComponentUtilities.h"
 #import "CKComponentSubclass.h"
+#import "CKRenderTreeNodeWithChildren.h"
+#import <ComponentKit/CKComponentInternal.h>
 
 @implementation CKStaticLayoutComponent
 {
@@ -32,6 +34,32 @@
 + (instancetype)newWithChildren:(CKContainerWrapper<std::vector<CKStaticLayoutComponentChild>> &&)children
 {
   return [self newWithView:{} size:{} children:std::move(children)];
+}
+
+- (void)buildComponentTree:(id<CKTreeNodeWithChildrenProtocol>)owner
+             previousOwner:(id<CKTreeNodeWithChildrenProtocol>)previousOwner
+                 scopeRoot:(CKComponentScopeRoot *)scopeRoot
+              stateUpdates:(const CKComponentStateUpdateMap &)stateUpdates
+                    config:(const CKBuildComponentConfig &)config
+{
+  if (config.forceParent) {
+    auto const node = [[CKTreeNodeWithChildren alloc]
+                       initWithComponent:self
+                       owner:owner
+                       previousOwner:previousOwner
+                       scopeRoot:scopeRoot
+                       stateUpdates:stateUpdates];
+
+    auto const previousOwnerForChild = (id<CKTreeNodeWithChildrenProtocol>)[previousOwner childForComponentKey:[node componentKey]];
+    for (auto const &child : _children) {
+      [child.component buildComponentTree:node previousOwner:previousOwnerForChild scopeRoot:scopeRoot stateUpdates:stateUpdates config:config];
+    }
+  } else {
+    [super buildComponentTree:owner previousOwner:previousOwner scopeRoot:scopeRoot stateUpdates:stateUpdates config:config];
+    for (auto const &child : _children) {
+      [child.component buildComponentTree:owner previousOwner:previousOwner scopeRoot:scopeRoot stateUpdates:stateUpdates config:config];
+    }
+  }
 }
 
 - (CKComponentLayout)computeLayoutThatFits:(CKSizeRange)constrainedSize

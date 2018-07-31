@@ -17,7 +17,7 @@
 @class CKComponentScopeFrame;
 @class CKComponentScopeHandle;
 @class CKComponentScopeRoot;
-@protocol CKScopedComponent;
+@protocol CKComponentProtocol;
 
 struct CKComponentScopeFramePair {
   CKComponentScopeFrame *frame;
@@ -28,7 +28,7 @@ struct CKComponentScopeFramePair {
 
 + (CKComponentScopeFramePair)childPairForPair:(const CKComponentScopeFramePair &)pair
                                       newRoot:(CKComponentScopeRoot *)newRoot
-                               componentClass:(Class<CKScopedComponent>)aClass
+                               componentClass:(Class<CKComponentProtocol>)aClass
                                    identifier:(id)identifier
                                          keys:(const std::vector<id<NSObject>> &)keys
                           initialStateCreator:(id (^)(void))initialStateCreator
@@ -37,5 +37,9 @@ struct CKComponentScopeFramePair {
 - (instancetype)initWithHandle:(CKComponentScopeHandle *)handle;
 
 @property (nonatomic, strong, readonly) CKComponentScopeHandle *handle;
+
++ (void)setAlwaysUseStateKeyCounter:(BOOL)alwaysUseStateKeyCounter;
+
+- (size_t)childrenSize;
 
 @end

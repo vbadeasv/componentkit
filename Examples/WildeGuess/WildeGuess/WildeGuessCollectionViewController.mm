@@ -24,7 +24,7 @@
 
 @implementation WildeGuessCollectionViewController
 {
-  CKCollectionViewTransactionalDataSource *_dataSource;
+  CKCollectionViewDataSource *_dataSource;
   QuoteModelController *_quoteModelController;
   CKComponentFlexibleSizeRangeProvider *_sizeRangeProvider;
 }
@@ -55,14 +55,18 @@
   self.collectionView.backgroundColor = [UIColor whiteColor];
   self.collectionView.delegate = self;
   QuoteContext *context = [[QuoteContext alloc] initWithImageNames:imageNames];
+
+  // Size configuration
   const CKSizeRange sizeRange = [_sizeRangeProvider sizeRangeForBoundingSize:self.collectionView.bounds.size];
-  CKTransactionalComponentDataSourceConfiguration *configuration =
-  [[CKTransactionalComponentDataSourceConfiguration alloc] initWithComponentProvider:[self class]
-                                                                             context:context
-                                                                           sizeRange:sizeRange];
-  _dataSource = [[CKCollectionViewTransactionalDataSource alloc] initWithCollectionView:self.collectionView
-                                                            supplementaryViewDataSource:nil
-                                                                          configuration:configuration];
+  CKDataSourceConfiguration *configuration =
+  [[CKDataSourceConfiguration alloc] initWithComponentProvider:[self class]
+                                                       context:context
+                                                     sizeRange:sizeRange];
+
+  // Create the data source
+  _dataSource = [[CKCollectionViewDataSource alloc] initWithCollectionView:self.collectionView
+                                               supplementaryViewDataSource:nil
+                                                             configuration:configuration];
   // Insert the initial section
   CKDataSourceChangeset *initialChangeset =
   [[[CKDataSourceChangesetBuilder transactionalComponentDataSourceChangeset]

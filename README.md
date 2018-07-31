@@ -9,16 +9,23 @@ ComponentKit is a view framework for iOS that is heavily inspired by React. It t
 ComponentKit is available to install via [Carthage](https://github.com/Carthage/Carthage). To get started add the following to your [Cartfile](https://github.com/Carthage/Carthage/blob/master/Documentation/Artifacts.md#cartfile):
 
 ```
-github "facebook/ComponentKit" ~> 0.20
+github "facebook/ComponentKit" ~> 0.23
 ```
 
 ### Opening the Xcode projects
+ComponentKit has a few dependencies that need to be installed via [Carthage](https://github.com/Carthage/Carthage). **Before you open any of the Xcode projects in this repo, make sure you run**:
 
-If you want to try out ComponentKit just clone the GitHub repository, clone submodules and open the Xcode project.
-To clone submodules:
 ```
-git submodule update --init
+carthage checkout
 ```
+
+If Carthage isn't installed, you easily install it via Homebrew:
+
+```
+brew install carthage
+```
+If you can't use Homebrew, Carthage provides other [installation methods](https://github.com/Carthage/Carthage#installing-carthage).
+
 
 To get started with the example app:
 
@@ -33,8 +40,6 @@ If you're interested in viewing only the ComponentKit source code in Xcode:
 ```
 open ComponentKit.xcodeproj
 ```
-
-There is no need to run any special commands prior to opening either Xcode project.
 
 ### Learn more
 

@@ -11,6 +11,7 @@
 #import <UIKit/UIKit.h>
 
 #import <ComponentKit/CKComponentRootView.h>
+#import <ComponentKit/CKInspectableView.h>
 
 /**
  @param rootView The CKComponentRootView instance being hit-tested.
@@ -20,7 +21,10 @@
  */
 typedef UIView *(^CKComponentRootViewHitTestHook)(UIView *rootView, CGPoint point, UIEvent *event, UIView *hitView);
 
-@interface CKComponentRootView ()
+@interface CKComponentRootView () <CKInspectableView>
+
+- (instancetype)initWithFrame:(CGRect)frame
+          allowTapPassthrough:(BOOL)allowTapPassthrough;
 
 /**
  Exposes the ability to supplement the hitTest for the root view used in each CKComponentHostingView or

@@ -11,7 +11,8 @@
 #import <Foundation/Foundation.h>
 
 #import <ComponentKit/CKComponentScopeTypes.h>
-#import <ComponentKit/CKScopedComponentController.h>
+#import <ComponentKit/CKComponentControllerProtocol.h>
+#import <ComponentKit/CKStateUpdateMetadata.h>
 #import <ComponentKit/CKUpdateMode.h>
 
 @class CKComponent;
@@ -19,37 +20,45 @@
 @class CKScopedResponder;
 
 @protocol CKComponentStateListener;
-@protocol CKScopedComponent;
+@protocol CKComponentProtocol;
 
-@interface CKComponentScopeHandle<__covariant ControllerType:id<CKScopedComponentController>> : NSObject
+@interface CKComponentScopeHandle<__covariant ControllerType:id<CKComponentControllerProtocol>> : NSObject
 
 /**
  This method looks to see if the currently defined scope matches that of the given component; if so it returns the
  handle corresponding to the current scope. Otherwise it returns nil.
  This is only meant to be called when constructing a component and as part of the implementation itself.
  */
-+ (instancetype)handleForComponent:(id<CKScopedComponent>)component;
++ (instancetype)handleForComponent:(id<CKComponentProtocol>)component;
 
 /** Creates a conceptually brand new scope handle */
 - (instancetype)initWithListener:(id<CKComponentStateListener>)listener
                   rootIdentifier:(CKComponentScopeRootIdentifier)rootIdentifier
-                  componentClass:(Class<CKScopedComponent>)componentClass
-             initialStateCreator:(id (^)(void))initialStateCreator;
+                  componentClass:(Class<CKComponentProtocol>)componentClass
+                    initialState:(id)initialState
+                          parent:(CKComponentScopeHandle *)parent;
 
 /** Creates a new instance of the scope handle that incorporates the given state updates. */
 - (instancetype)newHandleWithStateUpdates:(const CKComponentStateUpdateMap &)stateUpdates
-                       componentScopeRoot:(CKComponentScopeRoot *)componentScopeRoot;
+                       componentScopeRoot:(CKComponentScopeRoot *)componentScopeRoot
+                                   parent:(CKComponentScopeHandle *)parent;
 
 /** Creates a new, but identical, instance of the scope handle that will be reacquired due to a scope collision. */
 - (instancetype)newHandleToBeReacquiredDueToScopeCollision;
 
 /** Enqueues a state update to be applied to the scope with the given mode. */
 - (void)updateState:(id (^)(id))updateBlock
-           userInfo:(NSDictionary<NSString *, NSString *> *)userInfo
+           metadata:(const CKStateUpdateMetadata &)metadata
                mode:(CKUpdateMode)mode;
+
+/** Replaces the state for this handle. May only be called *before* resolution. */
+- (void)replaceState:(id)state;
 
 /** Informs the scope handle that it should complete its configuration. This will generate the controller */
 - (void)resolve;
+
+/** Acquire component, assert if the scope handle is wrong */
+- (void)forceAcquireFromComponent:(id<CKComponentProtocol>)component;
 
 /**
  Should not be called until after handleForComponent:. The controller will assert (if assertions are compiled), and
@@ -57,10 +66,12 @@
  */
 @property (nonatomic, strong, readonly) ControllerType controller;
 
-@property (nonatomic, assign, readonly) Class<CKScopedComponent> componentClass;
+@property (nonatomic, assign, readonly) Class<CKComponentProtocol> componentClass;
 
 @property (nonatomic, strong, readonly) id state;
 @property (nonatomic, readonly) CKComponentScopeHandleIdentifier globalIdentifier;
+@property (nonatomic, readonly, weak) id<CKComponentProtocol> acquiredComponent;
+@property (nonatomic, weak, readonly) CKComponentScopeHandle *parent;
 
 /**
  Provides a responder corresponding with this scope handle. The controller will assert if called before resolution.
@@ -68,6 +79,24 @@
 - (CKScopedResponder *)scopedResponder;
 
 @end
+
+template<>
+struct std::hash<CKComponentScopeHandle *>
+{
+  size_t operator()(const CKComponentScopeHandle *handle) const
+  {
+    return (size_t)handle.globalIdentifier;
+  }
+};
+
+template<>
+struct std::equal_to<CKComponentScopeHandle *>
+{
+  bool operator()(const CKComponentScopeHandle *lhs, const CKComponentScopeHandle *rhs) const
+  {
+    return lhs.globalIdentifier == rhs.globalIdentifier;
+  }
+};
 
 typedef int32_t CKScopedResponderUniqueIdentifier;
 typedef int CKScopedResponderKey;

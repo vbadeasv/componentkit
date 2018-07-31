@@ -8,7 +8,7 @@
  *
  */
 
-#import "CKComponentScopeFrame.h"
+#import "CKComponentScopeFrameInternal.h"
 
 #import <algorithm>
 #import <unordered_map>
@@ -37,11 +37,13 @@ struct CKStateScopeKey {
   Class __unsafe_unretained componentClass;
   id identifier;
   std::vector<id<NSObject>> keys;
+  NSUInteger stateKeyCounter; // In case of scope collistion, we will increment this counter and creare a uniqe one.
 
   bool operator==(const CKStateScopeKey &v) const {
     return (CKObjectIsEqual(this->componentClass, v.componentClass)
             && CKObjectIsEqual(this->identifier, v.identifier)
-            && keyVectorsEqual(this->keys, v.keys));
+            && keyVectorsEqual(this->keys, v.keys)
+            && this->stateKeyCounter == v.stateKeyCounter);
   }
 };
 
@@ -51,20 +53,23 @@ namespace std {
     size_t operator ()(CKStateScopeKey k) const {
       // Note we just use k.keys.size() for the hash of keys. Otherwise we'd have to enumerate over each item and
       // call [NSObject -hash] on it and incorporate every element into the overall hash somehow.
-      NSUInteger subhashes[] = { [k.componentClass hash], [k.identifier hash], k.keys.size() };
+      NSUInteger subhashes[] = { [k.componentClass hash], [k.identifier hash], k.keys.size(), k.stateKeyCounter };
       return CKIntegerArrayHash(subhashes, CK_ARRAY_COUNT(subhashes));
     }
   };
 }
 
+static BOOL _alwaysUseStateKeyCounter = NO;
+
 @implementation CKComponentScopeFrame
 {
   std::unordered_map<CKStateScopeKey, CKComponentScopeFrame *> _children;
+  std::unordered_map<CKStateScopeKey, NSUInteger> _stateKeyCounterMap;
 }
 
 + (CKComponentScopeFramePair)childPairForPair:(const CKComponentScopeFramePair &)pair
                                       newRoot:(CKComponentScopeRoot *)newRoot
-                               componentClass:(Class<CKScopedComponent>)componentClass
+                               componentClass:(Class<CKComponentProtocol>)componentClass
                                    identifier:(id)identifier
                                          keys:(const std::vector<id<NSObject>> &)keys
                           initialStateCreator:(id (^)())initialStateCreator
@@ -73,114 +78,54 @@ namespace std {
   CKAssertNotNil(pair.frame, @"Must have frame");
 
   CKComponentScopeFrame *existingChildFrameOfEquivalentPreviousFrame;
+  CKStateScopeKey stateScopeKey = {componentClass, identifier, keys};
+
+  // If 'alwaysUseStateKeyCounter' is set to YES, we increment the stateKeyCounter by default to avoid scope collisions.
+  if (_alwaysUseStateKeyCounter) {
+    // We increment the `stateKeyCounter` in the parent frame map (`_stateKeyCounterMap`)
+    // and use it as part of the state scope key; this way we can gurautee that each `CKStateScopeKey` is unique.
+    auto const stateKeyCounter = ++(pair.frame->_stateKeyCounterMap[stateScopeKey]);
+    stateScopeKey = {componentClass, identifier, keys, stateKeyCounter};
+  }
+
+  // Get the child from the previous equivalent scope frame.
   if (pair.equivalentPreviousFrame) {
     const auto &equivalentPreviousFrameChildren = pair.equivalentPreviousFrame->_children;
-    const auto it = equivalentPreviousFrameChildren.find({componentClass, identifier, keys});
+    const auto it = equivalentPreviousFrameChildren.find(stateScopeKey);
     existingChildFrameOfEquivalentPreviousFrame = (it == equivalentPreviousFrameChildren.end()) ? nil : it->second;
   }
 
-  const auto existingChild = pair.frame->_children.find({componentClass, identifier, keys});
-  if (!pair.frame->_children.empty() && (existingChild != pair.frame->_children.end())) {
-    /*
-     The component was involved in a scope collision and the scope handle needs to be reacquired.
+  // If 'alwaysUseStateKeyCounter' is set to NO, we check for a scope collision.
+  // If we have one, we use the `stateKeyCounter` to create a unique state key.
+  if (!_alwaysUseStateKeyCounter) {
+    const auto existingChild = pair.frame->_children.find(stateScopeKey);
+    if (!pair.frame->_children.empty() && (existingChild != pair.frame->_children.end())) {
+      // In case of a scope collision, we increment the `stateKeyCounter` in the parent frame map (`_stateKeyCounterMap`)
+      // and use it as part of the state scope key; this way we can gurautee that each `CKStateScopeKey` is unique.
+      auto const stateKeyCounter = ++(pair.frame->_stateKeyCounterMap[stateScopeKey]);
+      stateScopeKey = {componentClass, identifier, keys, stateKeyCounter};
 
-     In the event of a component scope collision the component scope frame reuses the existing scope handle; any
-     existing state will be made available to the component that introduced the scope collision. This leads to some
-     interesting side effects:
-
-       1. Any component state associated with the scope handle will be shared between components with colliding scopes
-       2. Any component controller associated with the scope handle will be responsible for each component with
-          colliding scopes; resulting in strange behavior while components are mounted, unmounted, etc.
-
-     Reusing the existing scope handle allows ComponentKit to detect component scope collisions during layout. Moving
-     component scope collision detection to component layout makes it possible to create multiple components that may
-     normally result in a scope collision even if only one component actually makes it to layout.
-    */
-    CKComponentScopeHandle *newHandle = [existingChild->second.handle newHandleToBeReacquiredDueToScopeCollision];
-    CKComponentScopeFrame *newChild = [[CKComponentScopeFrame alloc] initWithHandle:newHandle];
-    /*
-     Share the initial component scope tree across all colliding component scopes.
-
-     This behavior ensures the initial component scope tree "wins" in the event of a component scope collision:
-
-                                       +-------+         +-------+         +-------+
-                                       |       |         |       |         |       |
-                                       |   A   |         |   A   |         |   A   |
-                                       |      1|         |      2|         |      3|
-                                       +-------+         +-------+         +-------+
-                                           |                 | collision       | collision
-                                           +-----------------+-----------------+
-                                          /|\
-                                         / | \
-                                        /  |  \
-                                   +---+ +---+ +---+
-                                   | 1 | | 2 | | 3 |
-                                   +---+ +---+ +---+
-                                    / \
-                                +---+ +---+
-                                | 4 | | 5 |
-                                +---+ +---+
-
-     In the example above the component scope frames labeled as "A" are involved in scope collisions. Notice that only
-     one component scope tree exists for all three component scope frames involved in the collision. Any component state
-     or component controllers present in the intial component scope tree are now present across all colliding component
-     scope frames.
-
-     Now assume each component scope frame above is paired with a matching component. Component scope frame A1 belongs
-     to component A1, colliding component scope frame A2 belongs to component A2, component scope frame 4 belongs to
-     component 4, and so on. If only component A2 finds its way to layout (i.e. both A1 and A3 were simply created and
-     not added to the component hierarchy) this behavior guarantees that component 4 always acquires the same component
-     scope.
-
-     Compare this behavior to the behavior that would exist if the initial component scope tree were not shared:
-
-                                       +-------+         +-------+         +-------+
-                                       |       |         |       |         |       |
-                                       |   A   |         |   A   |         |   A   |
-                                       |      1|         |      2|         |      3|
-                                       +-------+         +-------+         +-------+
-                                           |                 | collision       | collision
-                                           +-----------------+-----------------+
-                                          /|\                .                /|\
-                                         / | \               .               / | \
-                                        /  |  \              .              /  |  \
-                                   +---+ +---+ +---+                   +---+ +---+ +---+
-                                   | 1 | | 2 | | 3 |                   | 1'| | 2'| | 3'|
-                                   +---+ +---+ +---+                   +---+ +---+ +---+
-                                    / \                                 / \
-                                +---+ +---+                         +---+ +---+
-                                | 4 | | 5 |                         | 4'| | 5'|
-                                +---+ +---+                         +---+ +---+
-
-     Each component scope frame participating in the collision now has its own unique component scope tree. For
-     component scope frame A1 the outcome is largely the same. Things get a bit more interesting for A2 and A3. Notice
-     that A3 now has its own, nearly identical, component scope tree. The structure is the same but the component state
-     and component controllers are different.
-
-     Problems arise when the component that owns component scope frame A3 is added to the component hierarchy. Suppose
-     A3 is building its component scope tree for the first time. The component that owns component scope frame 4' will
-     acquire a new component controller as there is no equivalent previous frame, as expected.
-
-     The next time the component hierarchy is created (e.g. after a component state update) component scope frame 4'
-     actually finds component scope frame 4 in the equivalent previous frame. This means component 4' will acquire a
-     DIFFERENT component controller instance than it had originally. Why? Because the component scope frame above
-     component scope frame A will only ever have A1 as a child because A1 was inserted before A2 and A3.
-     */
-    newChild->_children = existingChild->second->_children;
-    return {.frame = newChild, .equivalentPreviousFrame = existingChildFrameOfEquivalentPreviousFrame};
+      if (pair.equivalentPreviousFrame) {
+        const auto &equivalentPreviousFrameChildren = pair.equivalentPreviousFrame->_children;
+        const auto it = equivalentPreviousFrameChildren.find(stateScopeKey);
+        existingChildFrameOfEquivalentPreviousFrame = (it == equivalentPreviousFrameChildren.end()) ? nil : it->second;
+      }
+    }
   }
 
   CKComponentScopeHandle *newHandle =
   existingChildFrameOfEquivalentPreviousFrame
   ? [existingChildFrameOfEquivalentPreviousFrame.handle newHandleWithStateUpdates:stateUpdates
-                                                               componentScopeRoot:newRoot]
+                                                               componentScopeRoot:newRoot
+                                                                           parent:pair.frame.handle]
   : [[CKComponentScopeHandle alloc] initWithListener:newRoot.listener
                                       rootIdentifier:newRoot.globalIdentifier
                                       componentClass:componentClass
-                                 initialStateCreator:initialStateCreator];
+                                        initialState:(initialStateCreator ? initialStateCreator() : [componentClass initialState])
+                                              parent:pair.frame.handle];
 
   CKComponentScopeFrame *newChild = [[CKComponentScopeFrame alloc] initWithHandle:newHandle];
-  pair.frame->_children.insert({{componentClass, identifier, keys}, newChild});
+  pair.frame->_children.insert({stateScopeKey, newChild});
   return {.frame = newChild, .equivalentPreviousFrame = existingChildFrameOfEquivalentPreviousFrame};
 }
 
@@ -191,5 +136,71 @@ namespace std {
   }
   return self;
 }
+
+- (size_t)childrenSize
+{
+  return _children.size();
+}
+
+- (void)copyChildrenFrom:(CKComponentScopeFrame *)other
+{
+  if (other == nil) {
+    return;
+  }
+  _children = other->_children;
+}
+
+- (std::vector<CKComponent *>)allAcquiredComponentsInDescendants
+{
+  std::vector<CKComponent *> result;
+  for (const auto &pair : _children) {
+    [pair.second collectAllAquiredComponentsInto:result];
+  }
+  return result;
+}
+
+// Recursively gather all children into a shared mutable vector
+- (void)collectAllAquiredComponentsInto:(std::vector<CKComponent *> &)components
+{
+  components.push_back(self.handle.acquiredComponent);
+  for (const auto &pair : _children) {
+    [pair.second collectAllAquiredComponentsInto:components];
+  }
+}
+
++ (void)setAlwaysUseStateKeyCounter:(BOOL)alwaysUseStateKeyCounter
+{
+  static dispatch_once_t onceToken;
+  dispatch_once(&onceToken, ^{
+    _alwaysUseStateKeyCounter = alwaysUseStateKeyCounter;
+  });
+}
+
+#if DEBUG
+- (NSArray<NSString *> *)debugDescriptionComponents
+{
+  NSMutableArray<NSString *> *childrenDebugDescriptions = [NSMutableArray new];
+  for (auto child : _children) {
+    [childrenDebugDescriptions addObject:
+     [NSString stringWithFormat:@"- %@%@%@",
+      NSStringFromClass(child.first.componentClass),
+      child.first.identifier ? [NSString stringWithFormat:@":%@", child.first.identifier] : @"",
+      child.first.keys.empty() ? @"" : formatKeys(child.first.keys)]];
+    for (NSString *s in [child.second debugDescriptionComponents]) {
+      [childrenDebugDescriptions addObject:[@"  " stringByAppendingString:s]];
+    }
+  }
+  return childrenDebugDescriptions;
+}
+
+static NSString *formatKeys(const std::vector<id<NSObject>> &keys)
+{
+  NSMutableArray<NSString *> *a = [NSMutableArray new];
+  for (auto key : keys) {
+    [a addObject:[key description] ?: @"(null)"];
+  }
+  return [a componentsJoinedByString:@", "];
+}
+#endif
 
 @end

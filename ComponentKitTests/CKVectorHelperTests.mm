@@ -75,6 +75,151 @@
 
 @end
 
+@interface CKVectorMapTests : XCTestCase
+@end
+
+@implementation CKVectorMapTests
+
+- (void)test_mapEmptyVector
+{
+  std::vector<NSString *> a = {};
+  std::vector<int> b = CK::map(a, ^int(NSString *str) {
+    return str.intValue;
+  });
+  std::vector<int> c = {};
+  XCTAssertTrue(b == c);
+}
+
+- (void)test_mapVectorWithObjects
+{
+  std::vector<NSString *> a = {@"1", @"2", @"3"};
+  std::vector<int> b = CK::map(a, ^int(NSString *str) {
+    return str.intValue;
+  });
+  std::vector<int> c = {1, 2, 3};
+  XCTAssertTrue(b == c);
+}
+
+- (void)test_mapWithIndexVectorWithObjects
+{
+  NSArray<NSString *> *a = @[@"1", @"2", @"3"];
+  __block NSUInteger idx = 0;
+  std::vector<int> b = CK::mapWithIndex(a, ^int(NSString *str, NSUInteger index) {
+    XCTAssertTrue(idx == index);
+    idx++;
+    return str.intValue;
+  });
+  std::vector<int> c = {1, 2, 3};
+  XCTAssertTrue(b == c);
+}
+
+- (void)test_mapWithIndexVectorWithStructs
+{
+  struct InputStruct {
+    NSString *string;
+    NSInteger integer;
+  };
+  struct OutputStruct {
+    NSUInteger index;
+    NSInteger integer;
+    NSString *string;
+  };
+  std::vector<InputStruct> ts = {
+    {.string = @"a", .integer = 10},
+    {.string = @"b", .integer = 20},
+    {.string = @"c", .integer = -30}
+  };
+  std::vector<OutputStruct> rs = {
+    {.string = @"a", .integer = 10, .index = 0},
+    {.string = @"b", .integer = 20, .index = 1},
+    {.string = @"c", .integer = -30, .index = 2}
+  };
+  std::vector<OutputStruct> result = CK::mapWithIndex(ts, ^OutputStruct(InputStruct input, NSUInteger index) {
+    return {
+      .index = index,
+      .integer = input.integer,
+      .string = input.string,
+    };
+  });
+  auto outputStructsEqual = [](OutputStruct &lhs, OutputStruct& rhs) {
+    return [lhs.string isEqualToString:rhs.string] && lhs.integer == rhs.integer && lhs.index == rhs.index;
+  };
+  XCTAssertTrue(result.size() == rs.size());
+  for (int i = 0; i < rs.size(); i++) {
+    XCTAssertTrue(outputStructsEqual(rs.at(i), result.at(i)));
+  }
+}
+
+- (void)test_mapVectorWithStructs
+{
+  struct TestStruct {
+    int i;
+  };
+  std::vector<TestStruct> a = {{.i = 1}, {.i = 2}, {.i = 3}};
+  std::vector<int> b = CK::map(a, ^int(TestStruct s) {
+    return s.i;
+  });
+  std::vector<int> c = {1, 2, 3};
+  XCTAssertTrue(b == c);
+}
+
+@end
+
+@interface CKVectorFilterTests : XCTestCase
+@end
+
+@implementation CKVectorFilterTests
+
+- (void)test_filterEmptyVector
+{
+  std::vector<int> a = {};
+  std::vector<int> b = CK::filter(a, ^BOOL(int var) {
+    return var % 2 == 0;
+  });
+  std::vector<int> c = {};
+  XCTAssertTrue(b == c);
+}
+
+- (void)test_filterVectorWithObjects
+{
+  std::vector<NSString *> a = {@"1", @"2", @"3", @"4"};
+  std::vector<NSString *> b = CK::filter(a, ^BOOL(NSString *str) {
+    return str.intValue % 2 == 0;
+  });
+  std::vector<NSString *> c = {@"2", @"4"};
+  XCTAssertTrue(b == c);
+}
+
+- (void)test_filterVectorWithPrimitives
+{
+  std::vector<int> a = {1, 2, 3, 4};
+  std::vector<int> b = CK::filter(a, ^BOOL(int var) {
+    return var % 2 == 0;
+  });
+  std::vector<int> c = {2, 4};
+  XCTAssertTrue(b == c);
+}
+
+- (void)test_filterVectorWithStructs
+{
+  struct TestStruct {
+    int i;
+    
+    bool operator==(const TestStruct& rhs) const
+    {
+      return i == rhs.i;
+    }
+  };
+  std::vector<TestStruct> a = {{.i = 1}, {.i = 2}, {.i = 3}, {.i = 4}};
+  std::vector<TestStruct> b = CK::filter(a, ^BOOL(TestStruct s) {
+    return s.i % 2 == 0;
+  });
+  std::vector<TestStruct> c = {{.i = 2}, {.i = 4}};
+  XCTAssertTrue(b == c);
+}
+
+@end
+
 @interface CKVectorInterspersingTests : XCTestCase
 @end
 

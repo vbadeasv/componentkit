@@ -10,6 +10,8 @@
 
 #import <unordered_map>
 
+#import <UIKit/UIKit.h>
+
 #import <ComponentKit/CKComponent.h>
 #import <ComponentKit/CKComponentAction.h>
 #import <ComponentKit/CKContainerWrapper.h>
@@ -43,24 +45,31 @@ struct CKButtonComponentOptions {
   CKButtonComponentStateMap<UIImage *> backgroundImages;
   /// The title font the button.
   UIFont *titleFont;
-  /// Wether the button is selected.
+  /// Whether the button is selected.
   BOOL selected = NO;
-  /// Wether the button is enabled.
+  /// Whether the button is enabled.
   BOOL enabled = YES;
-  /// Additional attributes for the underlying UIBUtton
+  /// The maximum number of lines to use for rendering text.
+  NSInteger numberOfLines = 1;
+  /// The line break mode for the title label.
+  NSLineBreakMode lineBreakMode = NSLineBreakByTruncatingMiddle;
+  /// Additional attributes for the underlying UIButton
   CKViewComponentAttributeValueMap attributes;
   /// Accessibility context for the button.
   CKComponentAccessibilityContext accessibilityContext;
   /// Size restrictions for the button.
   CKComponentSize size;
-};
-
-struct CKButtonComponentAccessibilityConfiguration {
-  /** Accessibility label for the button. If one is not provided, the button title will be used as a label */
-  NSString *accessibilityLabel;
+  /// The inset or outset margins for the rectangle around the button's content.
+  UIEdgeInsets contentEdgeInsets = UIEdgeInsetsZero;
+  /// The inset or outset margins for the rectangle around the button's title text.
+  UIEdgeInsets titleEdgeInsets = UIEdgeInsetsZero;
+  /// The inset or outset margins for the rectangle around the button's image.
+  UIEdgeInsets imageEdgeInsets = UIEdgeInsetsZero;
 };
 
 /**
+ @uidocs https://fburl.com/CKButtonComponent:05b0
+
  A component that creates a UIButton.
 
  This component chooses the smallest size within its SizeRange that will fit its content. If its max size is smaller
@@ -68,7 +77,7 @@ struct CKButtonComponentAccessibilityConfiguration {
  */
 @interface CKButtonComponent : CKComponent
 
-+ (instancetype)newWithAction:(const CKTypedComponentAction<UIEvent *>)action
++ (instancetype)newWithAction:(const CKAction<UIEvent *>)action
                       options:(const CKButtonComponentOptions &)options;
 
 @end

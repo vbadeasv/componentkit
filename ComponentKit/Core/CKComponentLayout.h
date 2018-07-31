@@ -8,16 +8,22 @@
  *
  */
 
+#import <unordered_map>
+#import <unordered_set>
 #import <utility>
 #import <vector>
 
 #import <UIKit/UIKit.h>
 
 #import <ComponentKit/CKAssert.h>
+#import <ComponentKit/CKComponentScopeTypes.h>
+#import <ComponentKit/CKEqualityHashHelpers.h>
 #import <ComponentKit/CKSizeRange.h>
 
 @class CKComponent;
 @class CKComponentScopeRoot;
+
+@protocol CKAnalyticsListener;
 
 struct CKComponentLayoutChild;
 
@@ -45,6 +51,9 @@ struct CKComponentLayout {
 
   CKComponentLayout() noexcept
   : component(nil), size({0, 0}), children(emptyChildren()), extra(nil) {};
+
+  void enumerateLayouts(const std::function<void(const CKComponentLayout &)> &f) const;
+
 private:
   static std::shared_ptr<const std::vector<CKComponentLayoutChild>> emptyChildren() noexcept;
 };
@@ -52,6 +61,47 @@ private:
 struct CKComponentLayoutChild {
   CGPoint position;
   CKComponentLayout layout;
+};
+
+struct CKComponentRootLayout {
+  using ComponentLayoutCache = std::unordered_map<CKComponent *, CKComponentLayout, CK::hash<CKComponent *>, CK::is_equal<CKComponent *>>;
+  using ComponentsByPredicateMap = std::unordered_map<CKComponentPredicate, std::vector<CKComponent *>>;
+
+  CKComponentRootLayout() {}
+  explicit CKComponentRootLayout(CKComponentLayout layout)
+  : CKComponentRootLayout(layout, {}, {}) {}
+  explicit CKComponentRootLayout(CKComponentLayout layout, ComponentLayoutCache layoutCache, ComponentsByPredicateMap componentsByPredicate)
+  : _layout(std::move(layout)), _layoutCache(std::move(layoutCache)), _componentsByPredicate(std::move(componentsByPredicate)) {}
+
+  /**
+   This method returns a CKComponentLayout from the cache.
+   @param component The component to look for the layout with.
+   */
+  auto cachedLayoutForScopedComponent(CKComponent *const scopedComponent) const
+  {
+    const auto it = _layoutCache.find(scopedComponent);
+    return it != _layoutCache.end() ? it->second : CKComponentLayout {};
+  }
+
+  auto componentsMatchingPredicate(const CKComponentPredicate p) const
+  {
+    const auto it = _componentsByPredicate.find(p);
+    return it != _componentsByPredicate.end() ? it->second : std::vector<CKComponent *> {};
+  }
+
+  const auto &layout() const { return _layout; }
+  auto component() const { return _layout.component; }
+  auto size() const { return _layout.size; }
+
+private:
+  CKComponentLayout _layout;
+  ComponentLayoutCache _layoutCache;
+  ComponentsByPredicateMap _componentsByPredicate;
+};
+
+struct CKMountComponentLayoutResult {
+  NSSet *mountedComponents;
+  NSSet *unmountedComponents;
 };
 
 /**
@@ -62,18 +112,24 @@ struct CKComponentLayoutChild {
         CKMountComponentLayout; any components that are not present in the new layout will be unmounted.
  @param supercomponent Usually pass nil; if you are mounting a subtree of a layout, pass the parent component so the
         component responder chain can be connected correctly.
+ @param analyticsListener analytics listener used to log mount time
  */
-NSSet *CKMountComponentLayout(const CKComponentLayout &layout,
-                              UIView *view,
-                              NSSet *previouslyMountedComponents,
-                              CKComponent *supercomponent);
+CKMountComponentLayoutResult CKMountComponentLayout(const CKComponentLayout &layout,
+                                                    UIView *view,
+                                                    NSSet *previouslyMountedComponents,
+                                                    CKComponent *supercomponent,
+                                                    id<CKAnalyticsListener> analyticsListener = nil);
 
 /**
  Safely computes the layout of the given root component by guarding against nil components.
  @param rootComponent The root component to compute the layout for.
  @param sizeRange The size range to compute the component layout within.
+ @param analyticsListener analytics listener used to log layout time.
  */
-CKComponentLayout CKComputeRootComponentLayout(CKComponent *rootComponent, const CKSizeRange &sizeRange);
+CKComponentRootLayout CKComputeRootComponentLayout(CKComponent *rootComponent,
+                                                   const CKSizeRange &sizeRange,
+                                                   id<CKAnalyticsListener> analyticsListener = nil,
+                                                   std::unordered_set<CKComponentPredicate> predicates = {});
 
 /**
  Safely computes the layout of the given component by guarding against nil components.

@@ -14,7 +14,9 @@
 #import "CKComponentSubclass.h"
 
 #import <ComponentKit/CKArgumentPrecondition.h>
+#import <ComponentKit/CKComponentScopeEnumeratorProvider.h>
 #import <ComponentKit/CKAssert.h>
+#import <ComponentKit/CKBuildComponent.h>
 #import <ComponentKit/CKInternalHelpers.h>
 #import <ComponentKit/CKMacros.h>
 #import <ComponentKit/CKMutex.h>
@@ -23,9 +25,9 @@
 #import "CKComponent+UIView.h"
 #import "CKComponentAccessibility.h"
 #import "CKComponentAnimation.h"
-#import "CKComponentBacktraceDescription.h"
 #import "CKComponentController.h"
 #import "CKComponentDebugController.h"
+#import "CKComponentDescriptionHelper.h"
 #import "CKComponentLayout.h"
 #import "CKComponentScopeHandle.h"
 #import "CKComponentViewConfiguration.h"
@@ -33,6 +35,9 @@
 #import "CKMountAnimationGuard.h"
 #import "CKWeakObjectContainer.h"
 #import "ComponentLayoutContext.h"
+#import "CKThreadLocalComponentScope.h"
+#import "CKComponentScopeRoot.h"
+#import "CKTreeNode.h"
 
 CGFloat const kCKComponentParentDimensionUndefined = NAN;
 CGSize const kCKComponentParentSizeUndefined = {kCKComponentParentDimensionUndefined, kCKComponentParentDimensionUndefined};
@@ -41,6 +46,7 @@ struct CKComponentMountInfo {
   CKComponent *supercomponent;
   UIView *view;
   CKComponentViewContext viewContext;
+  BOOL componentOrAncestorHasScopeConflict;
 };
 
 @implementation CKComponent
@@ -68,6 +74,13 @@ struct CKComponentMountInfo {
   return [[self alloc] initWithView:view size:size];
 }
 
++ (instancetype)newRenderComponentWithView:(const CKComponentViewConfiguration &)view
+                                      size:(const CKComponentSize &)size
+                         isLayoutComponent:(BOOL)isLayoutComponent
+{
+  return [[self alloc] initRenderComponentWithView:view size:size isLayoutComponent:isLayoutComponent];
+}
+
 + (instancetype)new
 {
   return [self newWithView:{} size:{}];
@@ -89,10 +102,40 @@ struct CKComponentMountInfo {
   return self;
 }
 
+- (instancetype)initRenderComponentWithView:(const CKComponentViewConfiguration &)view
+                                       size:(const CKComponentSize &)size
+                          isLayoutComponent:(BOOL)isLayoutComponent
+{
+  if (self = [super init]) {
+    _viewConfiguration = view;
+    _size = size;
+
+    // Mark render component in the scope root, but only in case that it's not a layout component.
+    // We converted layout components (such as CKFlexboxComponent, CKInsetComponent etc.) to be a CKRenderComponentProtocol
+    // in order to support mix and match of CKCompositeComponents/CKComponent and CKRenderComponentProtocol components.
+    // We will build a component tree (CKTreeNode) only in case that we have a render component in the tree.
+    if (!isLayoutComponent) {
+      CKThreadLocalComponentScope *currentScope = CKThreadLocalComponentScope::currentScope();
+      if (currentScope != nullptr) {
+        currentScope->newScopeRoot.hasRenderComponentInTree = YES;
+      }
+    }
+  }
+  return self;
+}
+
+
 - (void)dealloc
 {
   // Since the component and its view hold strong references to each other, this should never happen!
   CKAssert(_mountInfo == nullptr, @"%@ must be unmounted before dealloc", [self class]);
+}
+
+- (void)acquireScopeHandle:(CKComponentScopeHandle *)scopeHandle
+{
+  CKAssert(_scopeHandle == nil, @"Component(%@) already has '_scopeHandle'.", self);
+  [scopeHandle forceAcquireFromComponent:self];
+  _scopeHandle = scopeHandle;
 }
 
 - (const CKComponentViewConfiguration &)viewConfiguration
@@ -104,6 +147,25 @@ struct CKComponentMountInfo {
 {
   CKAssertMainThread();
   return _mountInfo ? _mountInfo->viewContext : CKComponentViewContext();
+}
+
+#pragma mark - ComponentTree
+
+- (void)buildComponentTree:(id<CKTreeNodeWithChildrenProtocol>)owner
+             previousOwner:(id<CKTreeNodeWithChildrenProtocol>)previousOwner
+                 scopeRoot:(CKComponentScopeRoot *)scopeRoot
+              stateUpdates:(const CKComponentStateUpdateMap &)stateUpdates
+                    config:(const CKBuildComponentConfig &)config
+{
+  if (config.buildLeafNodes) {
+    // In this case this is a leaf component, which means we don't need to continue the recursion as it has no children.
+    __unused auto const node = [[CKTreeNode alloc]
+                                initWithComponent:self
+                                owner:owner
+                                previousOwner:previousOwner
+                                scopeRoot:scopeRoot
+                                stateUpdates:stateUpdates];
+  }
 }
 
 #pragma mark - Mounting and Unmounting
@@ -121,6 +183,7 @@ struct CKComponentMountInfo {
     _mountInfo.reset(new CKComponentMountInfo());
   }
   _mountInfo->supercomponent = supercomponent;
+  _mountInfo->componentOrAncestorHasScopeConflict = context.componentOrAncestorHasScopeConflict;
 
   CKComponentController *controller = _scopeHandle.controller;
   [controller componentWillMount:self];
@@ -148,9 +211,10 @@ struct CKComponentMountInfo {
       [v setBounds:{v.bounds.origin, size}];
     } @catch (NSException *exception) {
       NSString *const componentBacktraceDescription =
-      CKComponentBacktraceDescription(generateComponentBacktrace(supercomponent));
+        CKComponentBacktraceDescription(generateComponentBacktrace(supercomponent));
+      NSString *const componentChildrenDescription = CKComponentChildrenDescription(children);
       [NSException raise:exception.name
-                  format:@"%@ raised %@ during mount: %@\n%@", [self class], exception.name, exception.reason, componentBacktraceDescription];
+                  format:@"%@ raised %@ during mount: %@\n backtrace:%@ children:%@", [self class], exception.name, exception.reason, componentBacktraceDescription, componentChildrenDescription];
     }
 
     _mountInfo->viewContext = {v, {{0,0}, v.bounds.size}};
@@ -232,13 +296,14 @@ struct CKComponentMountInfo {
   CKAssert(layout.component == self, @"Layout computed by %@ should return self as component, but returned %@",
            [self class], [layout.component class]);
   CKSizeRange resolvedRange __attribute__((unused)) = constrainedSize.intersect(_size.resolve(parentSize));
-  CKAssert(layout.size.width <= resolvedRange.max.width
-           && layout.size.width >= resolvedRange.min.width
-           && layout.size.height <= resolvedRange.max.height
-           && layout.size.height >= resolvedRange.min.height,
-           @"Computed size %@ for %@ does not fall within constrained size %@\n%@",
-           NSStringFromCGSize(layout.size), [self class], resolvedRange.description(),
-           CK::Component::LayoutContext::currentStackDescription());
+  CKAssertWithCategory(CKIsGreaterThanOrEqualWithTolerance(resolvedRange.max.width, layout.size.width)
+                       && CKIsGreaterThanOrEqualWithTolerance(layout.size.width, resolvedRange.min.width)
+                       && CKIsGreaterThanOrEqualWithTolerance(resolvedRange.max.height,layout.size.height)
+                       && CKIsGreaterThanOrEqualWithTolerance(layout.size.height,resolvedRange.min.height),
+                       NSStringFromClass([self class]),
+                       @"Computed size %@ for %@ does not fall within constrained size %@\n%@",
+                       NSStringFromCGSize(layout.size), [self class], resolvedRange.description(),
+                       CK::Component::LayoutContext::currentStackDescription());
   return layout;
 }
 
@@ -293,9 +358,9 @@ static void *kRootComponentMountedViewKey = &kRootComponentMountedViewKey;
   return ck_objc_getAssociatedWeakObject(self, kRootComponentMountedViewKey);
 }
 
-#pragma mark - CKScopedComponent
+#pragma mark - CKComponentProtocol
 
-+ (Class<CKScopedComponentController>)controllerClass
++ (Class<CKComponentControllerProtocol>)controllerClass
 {
   const Class componentClass = self;
 
@@ -309,16 +374,21 @@ static void *kRootComponentMountedViewKey = &kRootComponentMountedViewKey;
   static std::unordered_map<Class, Class> *cache = new std::unordered_map<Class, Class>();
   const auto &it = cache->find(componentClass);
   if (it == cache->end()) {
-    Class c = NSClassFromString([NSStringFromClass(componentClass) stringByAppendingString:@"Controller"]);
-
-    // If you override animationsFromPreviousComponent: or animationsOnInitialMount then we need a controller.
-    if (c == nil &&
+    Class c = nil;
+    // If you override animationsFromPreviousComponent: or animationsOnInitialMount and if context permits
+    // then we need a controller
+    const auto ctx = CKComponentContext<CKComponentControllerContext>::get();
+    const auto handleAnimationsInController = (ctx == nil) ? YES : ctx.handleAnimationsInController;
+    if (handleAnimationsInController &&
         (CKSubclassOverridesSelector([CKComponent class], componentClass, @selector(animationsFromPreviousComponent:)) ||
          CKSubclassOverridesSelector([CKComponent class], componentClass, @selector(animationsOnInitialMount)))) {
           c = [CKComponentController class];
         }
-
     cache->insert({componentClass, c});
+
+    CKAssertWithCategory(!(c == nil && NSClassFromString([NSStringFromClass(componentClass) stringByAppendingString:@"Controller"])),
+                         NSStringFromClass([self class]), @"Should override + (Class<CKComponentControllerProtocol>)controllerClass to return its controllerClass");
+
     return c;
   }
   return it->second;
@@ -335,7 +405,7 @@ static void *kRootComponentMountedViewKey = &kRootComponentMountedViewKey;
 {
   CKAssertNotNil(_scopeHandle, @"A component without state cannot update its state.");
   CKAssertNotNil(updateBlock, @"Cannot enqueue component state modification with a nil update block.");
-  [_scopeHandle updateState:updateBlock userInfo:nil mode:mode];
+  [_scopeHandle updateState:updateBlock metadata:{} mode:mode];
 }
 
 - (CKComponentController *)controller
@@ -348,6 +418,16 @@ static void *kRootComponentMountedViewKey = &kRootComponentMountedViewKey;
   return _scopeHandle ? @(_scopeHandle.globalIdentifier) : nil;
 }
 
+-(id<CKComponentScopeEnumeratorProvider>)scopeEnumeratorProvider
+{
+  CKThreadLocalComponentScope *currentScope = CKThreadLocalComponentScope::currentScope();
+  if (currentScope == nullptr) {
+    return nil;
+  }
+
+  return currentScope->newScopeRoot;
+}
+
 static NSArray<CKComponent *> *generateComponentBacktrace(CKComponent *component)
 {
   NSMutableArray<CKComponent *> *const componentBacktrace = [NSMutableArray arrayWithObject:component];
@@ -357,6 +437,16 @@ static NSArray<CKComponent *> *generateComponentBacktrace(CKComponent *component
     [componentBacktrace addObject:[componentBacktrace lastObject]->_mountInfo->supercomponent];
   }
   return componentBacktrace;
+}
+
+- (BOOL)componentOrAncestorHasScopeConflict
+{
+  return _mountInfo ? _mountInfo->componentOrAncestorHasScopeConflict : NO;
+}
+
+- (UIView *)mountedView
+{
+  return _mountInfo ? _mountInfo->view : nil;
 }
 
 @end

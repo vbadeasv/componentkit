@@ -22,7 +22,7 @@ struct CKStateConfiguration {
   UIColor *titleColor;
   UIImage *image;
   UIImage *backgroundImage;
-  
+
   bool operator==(const CKStateConfiguration &other) const
   {
     return CKObjectIsEqual(title, other.title)
@@ -48,13 +48,21 @@ typedef std::array<CKStateConfiguration, 8> CKStateConfigurationArray;
   CGSize _intrinsicSize;
 }
 
-+ (instancetype)newWithAction:(const CKTypedComponentAction<UIEvent *>)action
++ (instancetype)newWithAction:(const CKAction<UIEvent *>)action
                       options:(const CKButtonComponentOptions &)options
 {
   static const CKComponentViewAttribute titleFontAttribute = {"CKButtonComponent.titleFont", ^(UIButton *button, id value) {
     button.titleLabel.font = value;
   }};
-  
+
+  static const CKComponentViewAttribute numberOfLinesAttribute = {"CKButtonComponent.numberOfLines", ^(UIButton *button, id value) {
+    button.titleLabel.numberOfLines = [value integerValue];
+  }};
+
+  static const CKComponentViewAttribute lineBreakModeAttribute = {"CKButtonComponent.lineBreakMode", ^(UIButton *button, id value) {
+    button.titleLabel.lineBreakMode = (NSLineBreakMode)[value integerValue];
+  }};
+
   static const CKComponentViewAttribute configurationAttribute = {
     "CKButtonComponent.config",
     ^(UIButton *view, CKButtonComponentConfiguration *config) {
@@ -95,29 +103,46 @@ typedef std::array<CKStateConfiguration, 8> CKStateConfigurationArray;
       });
     }
   };
-  
+
+  UIEdgeInsets contentEdgeInsets = options.contentEdgeInsets;
+  const auto attributesContentEdgeInsets = options.attributes.find(@selector(setContentEdgeInsets:));
+  if (attributesContentEdgeInsets != options.attributes.end()) {
+    contentEdgeInsets = [attributesContentEdgeInsets->second UIEdgeInsetsValue];
+  }
+
+  UIEdgeInsets titleEdgeInsets = options.titleEdgeInsets;
+  const auto attributesTitleEdgeInsets = options.attributes.find(@selector(setTitleEdgeInsets:));
+  if (attributesTitleEdgeInsets != options.attributes.end()) {
+    titleEdgeInsets = [attributesTitleEdgeInsets->second UIEdgeInsetsValue];
+  }
+
+  UIEdgeInsets imageEdgeInsets = options.imageEdgeInsets;
+  const auto attributesImageEdgeInsets = options.attributes.find(@selector(setImageEdgeInsets:));
+  if (attributesImageEdgeInsets != options.attributes.end()) {
+    imageEdgeInsets = [attributesImageEdgeInsets->second UIEdgeInsetsValue];
+  }
+
   CKViewComponentAttributeValueMap attributes(options.attributes);
   attributes.insert({
     {configurationAttribute, configurationFromOptions(options)},
     {titleFontAttribute, options.titleFont},
+    {numberOfLinesAttribute, options.numberOfLines},
+    {lineBreakModeAttribute, options.lineBreakMode},
     {@selector(setSelected:), options.selected},
     {@selector(setEnabled:), options.enabled},
+    {@selector(setContentEdgeInsets:), contentEdgeInsets},
+    {@selector(setTitleEdgeInsets:), titleEdgeInsets},
+    {@selector(setImageEdgeInsets:), imageEdgeInsets},
     CKComponentActionAttribute(action, UIControlEventTouchUpInside),
   });
-  
-  UIEdgeInsets contentEdgeInsets = UIEdgeInsetsZero;
-  const auto it = options.attributes.find(@selector(setContentEdgeInsets:));
-  if (it != options.attributes.end()) {
-    contentEdgeInsets = [it->second UIEdgeInsetsValue];
-  }
-  
+
   CKComponentAccessibilityContext accessibilityContext(options.accessibilityContext);
   if (!accessibilityContext.accessibilityComponentAction) {
     accessibilityContext.accessibilityComponentAction = options.enabled
-    ? CKUntypedComponentAction::demotedFrom(action, static_cast<UIEvent*>(nil))
+    ? CKAction<>::demotedFrom(action, static_cast<UIEvent*>(nil))
     : nullptr;
   }
-  
+
   const auto b = [super
                   newWithView:{
                     [UIButton class],
@@ -125,17 +150,21 @@ typedef std::array<CKStateConfiguration, 8> CKStateConfigurationArray;
                     std::move(accessibilityContext)
                   }
                   size:options.size];
-  
+
 #if !TARGET_OS_TV
   const UIControlState state = (options.selected ? UIControlStateSelected : UIControlStateNormal)
   | (options.enabled ? UIControlStateNormal : UIControlStateDisabled);
   b->_intrinsicSize = intrinsicSize(valueForState(options.titles.getMap(), state),
+                                    options.numberOfLines,
                                     options.titleFont,
                                     valueForState(options.images.getMap(), state),
                                     valueForState(options.backgroundImages.getMap(), state),
-                                    contentEdgeInsets);
+                                    contentEdgeInsets,
+                                    titleEdgeInsets,
+                                    imageEdgeInsets);
+
 #else
-  // intrinsicSize not available on tvOS (can't use `sizeWithFont`) so set to infinity
+  // `labelFontSize` is unavailable on tvOS
   b->_intrinsicSize = {INFINITY, INFINITY};
 #endif // !TARGET_OS_TV
   return b;
@@ -187,20 +216,23 @@ static T valueForState(const std::unordered_map<UIControlState, T> &m, UIControl
   return nil;
 }
 
-#if !TARGET_OS_TV // sizeWithFont is not available on tvOS
-static CGSize intrinsicSize(NSString *title, UIFont *titleFont, UIImage *image,
-                            UIImage *backgroundImage, UIEdgeInsets contentEdgeInsets)
+#if !TARGET_OS_TV // `labelFontSize` is unavailable on tvOS
+static CGSize intrinsicSize(NSString *title, NSInteger numberOfLines, UIFont *titleFont, UIImage *image,
+                            UIImage *backgroundImage, UIEdgeInsets contentEdgeInsets, UIEdgeInsets titleEdgeInsets, UIEdgeInsets imageEdgeInsets)
 {
-  // This computation is based on observing [UIButton -sizeThatFits:], which uses the deprecated method
-  // sizeWithFont in iOS 7 and iOS 8
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated"
-  const CGSize titleSize = [title sizeWithFont:titleFont ?: [UIFont systemFontOfSize:[UIFont buttonFontSize]]];
-#pragma clang diagnostic pop
+  UIFont *const font = titleFont ?: [UIFont systemFontOfSize:[UIFont labelFontSize]];
+  const CGSize titleSize = [title sizeWithAttributes:@{NSFontAttributeName: font}];
+
+  CKCWarn(numberOfLines > 0, @"Setting numberOfLines to 0 or less can create unpredictible behaviour between displaying the label and the buttons size. UIButton's titleLabel property isn't bound to the bounds of it's housing UIButton, which can lead to the text displaying incorrectly.");
+
+  const CGFloat labelHeight = (numberOfLines > 1)
+                            ? ceilf(font.lineHeight) * CGFloat(numberOfLines)
+                            : ceilf(titleSize.height);
+
   const CGSize imageSize = image.size;
   const CGSize contentSize = {
-    titleSize.width + imageSize.width + contentEdgeInsets.left + contentEdgeInsets.right,
-    MAX(titleSize.height, imageSize.height) + contentEdgeInsets.top + contentEdgeInsets.bottom
+    CKRoundValueToPixelGrid(ceilf(titleSize.width) + imageEdgeInsets.right + titleEdgeInsets.left + imageEdgeInsets.left + titleEdgeInsets.right + imageSize.width + contentEdgeInsets.left + contentEdgeInsets.right, YES, NO),
+    CKRoundValueToPixelGrid(MAX(labelHeight, imageSize.height) + MAX(titleEdgeInsets.top, imageEdgeInsets.top) + MAX(titleEdgeInsets.bottom, imageEdgeInsets.bottom) + contentEdgeInsets.top + contentEdgeInsets.bottom, YES, NO)
   };
   const CGSize backgroundImageSize = backgroundImage.size;
   return {

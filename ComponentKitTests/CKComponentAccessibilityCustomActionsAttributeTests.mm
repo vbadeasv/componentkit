@@ -30,21 +30,21 @@
   [CKComponent
    newWithView:{
      [UIView class],
-     {CKComponentAccessibilityCustomActionsAttribute({{@"Test", @selector(testAction:context:)}})}
+     {CKComponentAccessibilityCustomActionsAttribute({{@"Test", @selector(testNoArgumentAction:)}})}
    }
    size:{}];
   
   CKTestActionComponent *outerComponent =
   [CKTestActionComponent
-   newWithSingleArgumentBlock:^(CKComponent *sender, id context) { actionSender = sender; }
+   newWithSingleArgumentBlock:^(CKComponent *sender, id context) { }
    secondArgumentBlock:^(CKComponent *sender, id obj1, id obj2) { }
    primitiveArgumentBlock:^(CKComponent *sender, int value) { }
-   noArgumentBlock:^{ }
+   noArgumentBlock:^(CKComponent *sender) { actionSender = sender; }
    component:controlComponent];
   
   // Must be mounted to send actions:
   UIView *rootView = [UIView new];
-  NSSet *mountedComponents = CKMountComponentLayout([outerComponent layoutThatFits:{} parentSize:{}], rootView, nil, nil);
+  NSSet *mountedComponents = CKMountComponentLayout([outerComponent layoutThatFits:{} parentSize:{}], rootView, nil, nil).mountedComponents;
   
   UIAccessibilityCustomAction *action = controlComponent.viewContext.view.accessibilityCustomActions.firstObject;
   NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:[action.target methodSignatureForSelector:action.selector]];
@@ -76,12 +76,12 @@
    newWithSingleArgumentBlock:^(CKComponent *sender, id context) { actionSender = sender; }
    secondArgumentBlock:^(CKComponent *sender, id obj1, id obj2) { }
    primitiveArgumentBlock:^(CKComponent *sender, int value) { }
-   noArgumentBlock:^{ }
+   noArgumentBlock:^(CKComponent *sender) { }
    component:controlComponent];
   
   // Must be mounted to send actions:
   UIView *rootView = [UIView new];
-  NSSet *mountedComponents = CKMountComponentLayout([outerComponent layoutThatFits:{} parentSize:{}], rootView, nil, nil);
+  NSSet *mountedComponents = CKMountComponentLayout([outerComponent layoutThatFits:{} parentSize:{}], rootView, nil, nil).mountedComponents;
   
   UIAccessibilityCustomAction *action = [controlComponent.viewContext.view.accessibilityCustomActions objectAtIndex:2];
   XCTAssertEqualObjects(action.name, @"Test 3");
@@ -109,12 +109,12 @@
    newWithSingleArgumentBlock:^(CKComponent *sender, id context) { actionSender = sender; }
    secondArgumentBlock:^(CKComponent *sender, id obj1, id obj2) { }
    primitiveArgumentBlock:^(CKComponent *sender, int value) { }
-   noArgumentBlock:^{ }
+   noArgumentBlock:^(CKComponent *sender) { }
    component:controlComponent];
   
   // Must be mounted to send actions:
   UIView *rootView = [UIView new];
-  NSSet *mountedComponents = CKMountComponentLayout([outerComponent layoutThatFits:{} parentSize:{}], rootView, nil, nil);
+  NSSet *mountedComponents = CKMountComponentLayout([outerComponent layoutThatFits:{} parentSize:{}], rootView, nil, nil).mountedComponents;
   
   XCTAssertEqual(controlComponent.viewContext.view.accessibilityCustomActions.count, 1);
   

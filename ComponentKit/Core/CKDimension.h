@@ -17,9 +17,10 @@
 #import <ComponentKit/ComponentLayoutContext.h>  // Used by CKCAssertPositiveReal.
 
 #define CKCAssertPositiveReal(description, num) \
-  CKCAssert(num >= 0 && num < CGFLOAT_MAX, @"%@ must be a real positive integer.\n%@", description, CK::Component::LayoutContext::currentStackDescription())
+  CKCAssertWithCategory(num >= 0 && num < CGFLOAT_MAX, CK::Component::LayoutContext::currentRootComponentClassName(), @"%@ (%f) must be a real positive integer.\n%@", description, num, CK::Component::LayoutContext::currentStackDescription())
+
 #define CKCAssertInfOrPositiveReal(description, num) \
-  CKCAssert(isinf(num) || (num >= 0 && num < CGFLOAT_MAX), @"%@ must be infinite or a real positive integer.\n%@", description, CK::Component::LayoutContext::currentStackDescription())
+  CKCAssertWithCategory(isinf(num) || (num >= 0 && num < CGFLOAT_MAX), CK::Component::LayoutContext::currentRootComponentClassName(), @"%@ (%f) must be infinite or a real positive integer.\n%@", description, num, CK::Component::LayoutContext::currentStackDescription())
 
 /**
  A dimension relative to constraints to be provided in the future.
@@ -31,7 +32,7 @@
  "Points" - Just a number. It will always resolve to exactly this amount.
 
  "Percent" - Multiplied to a provided parent amount to resolve a final amount.
- If the parent amount is undefined (NaN), it acts as if Auto size was specified instead.
+ If the parent amount is undefined (NaN) or infinite, it acts as if Auto size was specified instead.
 
  A number of convenience constructors have been provided to make using RelativeDimension straight-forward.
 
@@ -51,7 +52,10 @@ namespace std {
 
 class CKRelativeDimension {
 public:
-  enum class Type {
+  // Make sizeof(Type) == sizeof(CGFloat) so that the default
+  // constructor takes fewer instructions (because of SLP
+  // vectorization).
+  enum class Type : NSInteger {
     AUTO,
     POINTS,
     PERCENT,
@@ -75,12 +79,7 @@ public:
 
 private:
   CKRelativeDimension(Type type, CGFloat value)
-    : _type(type), _value(value)
-  {
-    if (type == Type::POINTS) {
-      CKCAssertPositiveReal(@"Points", value);
-    }
-  }
+    : _type(type), _value(value) {}
 
   Type _type;
   CGFloat _value;

@@ -1,5 +1,8 @@
 #!/bin/sh
 
+# Go to root directory of the script
+pushd $(dirname $0)
+
 if [ -z $1 ]; then
   echo "usage: build.sh <subcommand>"
   echo "available subcommands:"
@@ -10,41 +13,48 @@ if [ -z $1 ]; then
   exit
 fi
 
-BUILDOUTPUTFILTER="tee"
-if type xcpretty > /dev/null 2>&1; then
-  BUILDOUTPUTFILTER="xcpretty"
-fi
-
 set -eu
 
 MODE=$1
 
+function project_version() {
+  # get contents -> grep for project version line -> cut string with '=' delimeter, take 2nd value -> trim whitespaces.
+  more ComponentKit/ComponentKit.xcconfig | grep "CURRENT_PROJECT_VERSION = [\.0-9]*" | cut -d = -f 2 | xargs echo -n
+}
+
 function ci() {
+  # replace line contains s.version with a new line contains value of `project_version`.
+  sed -i -e "s/s.version = \'[\.0-9]*\'/s.version = \'$(project_version)\'/g" ComponentKit.podspec
+  
   xcodebuild \
     -project $1 \
     -scheme $2 \
     -sdk $3 \
     -destination "$4" \
-    $5 \
-    | $BUILDOUTPUTFILTER \
-    && exit ${PIPESTATUS[0]}
+    -configuration $5 \
+    $6 \
+    -json
 }
 
 function ios_ci() {
-  ci $1 $2 iphonesimulator "platform=iOS Simulator,name=iPhone 5s" $3
+  ci $1 $2 iphonesimulator "platform=iOS Simulator,name=iPhone 5s" Release $3
 }
 
 function tvos_ci() {
-  ci $1 $2 appletvsimulator "platform=tvOS Simulator,name=Apple TV" $3
+  ci $1 $2 appletvsimulator "platform=tvOS Simulator,name=Apple TV" Release $3
 }
 
+function carthage_bootstrap() {
+  carthage bootstrap --platform iOS --no-use-binaries || true
+}
+
+carthage_bootstrap
+
 if [ "$MODE" = "ci-componentkit-ios" ]; then
-  carthage bootstrap --platform iOS --no-use-binaries
   ios_ci ComponentKit.xcodeproj ComponentKit test
 fi
 
 if [ "$MODE" = "ci-componentkit-tvos" ]; then
-  carthage bootstrap --platform tvOS --no-use-binaries
   tvos_ci ComponentKit.xcodeproj ComponentKitAppleTV test
 fi
 
@@ -76,3 +86,6 @@ if [ "$MODE" = "docs" ]; then
     --output appledoc \
     $HEADERS
 fi
+
+# Go back to the initial directory
+popd

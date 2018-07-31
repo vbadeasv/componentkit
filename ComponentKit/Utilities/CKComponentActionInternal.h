@@ -21,7 +21,7 @@
 @class CKComponent;
 
 typedef id (^CKResponderGenerationBlock)(void);
-typedef NS_ENUM(NSUInteger, CKComponentActionSendBehavior) {
+typedef NS_ENUM(NSInteger, CKComponentActionSendBehavior) {
   /** Starts searching at the sender's next responder. Usually this is what you want to prevent infinite loops. */
   CKComponentActionSendBehaviorStartAtSenderNextResponder,
   /** If the sender itself responds to the action, invoke the action on the sender. */
@@ -33,36 +33,36 @@ class _CKTypedComponentDebugInitialTarget;
 #pragma mark - Action Base
 
 /** A base-class for typed components that doesn't use templates to avoid template bloat. */
-class CKTypedComponentActionBase {
+class CKActionBase {
   protected:
   
   /**
    We support several different types of action variants. You don't need to use this value anywhere, it's set for you
    by whatever initializer you end up using.
    */
-  enum class CKTypedComponentActionVariant {
+  enum class CKActionVariant {
     RawSelector,
     TargetSelector,
     Responder,
     Block
   };
 
-  CKTypedComponentActionBase() noexcept;
-  CKTypedComponentActionBase(id target, SEL selector) noexcept;
+  CKActionBase() noexcept;
+  CKActionBase(id target, SEL selector) noexcept;
 
-  CKTypedComponentActionBase(const CKComponentScope &scope, SEL selector) noexcept;
+  CKActionBase(const CKComponentScope &scope, SEL selector) noexcept;
 
   /** Legacy constructor for raw selector actions. Traverse up the mount responder chain. */
-  CKTypedComponentActionBase(SEL selector) noexcept;
+  CKActionBase(SEL selector) noexcept;
   
-  CKTypedComponentActionBase(dispatch_block_t block) noexcept;
+  CKActionBase(dispatch_block_t block) noexcept;
 
-  ~CKTypedComponentActionBase() {};
+  ~CKActionBase() {};
 
   id initialTarget(CKComponent *sender) const;
   CKComponentActionSendBehavior defaultBehavior() const;
 
-  bool operator==(const CKTypedComponentActionBase& rhs) const;
+  bool operator==(const CKActionBase& rhs) const;
 
   // Destroying this field calls objc_destroyWeak. Since this is the only field
   // that runs code on destruction, making this field the first field of this
@@ -70,12 +70,12 @@ class CKTypedComponentActionBase {
   __weak id _target;
   std::pair<CKScopedResponderUniqueIdentifier, CKResponderGenerationBlock> _scopeIdentifierAndResponderGenerator;
   dispatch_block_t _block;
-  CKTypedComponentActionVariant _variant;
+  CKActionVariant _variant;
   SEL _selector;
 
 public:
   explicit operator bool() const noexcept;
-  bool isEqual(const CKTypedComponentActionBase &rhs) const noexcept {
+  bool isEqual(const CKActionBase &rhs) const noexcept {
     return *this == rhs;
   }
   SEL selector() const noexcept;
@@ -87,67 +87,45 @@ public:
 
 #pragma mark - Typed Helpers
 
-template <typename... Ts> struct CKTypedComponentActionTypelist { };
-
-template <bool... b>
-struct CKTypedComponentActionBoolPack {};
-
-template <typename... TS>
-struct CKTypedComponentActionDenyType : std::true_type {};
+template <typename... Ts> struct CKActionTypelist { };
 
 /** Base case, recursion should stop here. */
-void CKTypedComponentActionTypeVectorBuild(std::vector<const char *> &typeVector, const CKTypedComponentActionTypelist<> &list) noexcept;
+void CKActionTypeVectorBuild(std::vector<const char *> &typeVector, const CKActionTypelist<> &list) noexcept;
 
 /**
  Recursion through variadic argument type unpacking. This allows us to build a vector of encoded const char * before
  any actual arguments have been provided. All of this is done at compile-time.
  */
 template<typename T, typename... Ts>
-void CKTypedComponentActionTypeVectorBuild(std::vector<const char *> &typeVector, const CKTypedComponentActionTypelist<T, Ts...> &list) noexcept
+void CKActionTypeVectorBuild(std::vector<const char *> &typeVector, const CKActionTypelist<T, Ts...> &list) noexcept
 {
   typeVector.push_back(@encode(T));
-  CKTypedComponentActionTypeVectorBuild(typeVector, CKTypedComponentActionTypelist<Ts...>{});
+  CKActionTypeVectorBuild(typeVector, CKActionTypelist<Ts...>{});
 }
 
-/** Base case, recursion should stop here. */
 void CKConfigureInvocationWithArguments(NSInvocation *invocation, NSInteger index) noexcept;
-
-/**
- Recursion here is through normal variadic argument list unpacking. Unlike above, we have the arguments, so we don't
- require the intermediary struct.
- */
-template <typename T, typename... Ts>
-void CKConfigureInvocationWithArguments(NSInvocation *invocation, NSInteger index, T t, Ts... args) noexcept
-{
-  // We have to be able to handle methods that take less than the provided number of arguments, since that will cause
-  // an exception to be thrown.
-  if (index < invocation.methodSignature.numberOfArguments) {
-    [invocation setArgument:&t atIndex:index];
-    CKConfigureInvocationWithArguments(invocation, index + 1, args...);
-  }
-}
 
 #pragma mark - Debug Helpers
 
 template<typename... T>
-class CKTypedComponentAction;
+class CKAction;
 
 /**
  Get the list of control actions attached to the components view (if it has any), for debug purposes.
 
- @return map of CKTypedComponentAction<> attached to the specifiec component.
+ @return map of CKAction<> attached to the specifiec component.
  */
-std::unordered_map<UIControlEvents, std::vector<CKTypedComponentAction<UIEvent *>>> _CKComponentDebugControlActionsForComponent(CKComponent *const component);
+std::unordered_map<UIControlEvents, std::vector<CKAction<UIEvent *>>> _CKComponentDebugControlActionsForComponent(CKComponent *const component);
 
 /**
  Access the initialTarget of an action, for debug purposes.
  */
 class _CKTypedComponentDebugInitialTarget {
 private:
-  CKTypedComponentActionBase &_action;
+  CKActionBase &_action;
 
 public:
-  _CKTypedComponentDebugInitialTarget(CKTypedComponentActionBase &action) : _action(action) { }
+  _CKTypedComponentDebugInitialTarget(CKActionBase &action) : _action(action) { }
 
   id get(CKComponent *sender) const {
 #if DEBUG
@@ -156,26 +134,41 @@ public:
     return nil;
 #endif
   }
+  
+  BOOL isBlockBaseAction() const {
+    return _action._variant == CKActionBase::CKActionVariant::Block;
+  }
 };
 
+#if DEBUG
 void _CKTypedComponentDebugCheckComponentScope(const CKComponentScope &scope, SEL selector, const std::vector<const char *> &typeEncodings) noexcept;
-
 void _CKTypedComponentDebugCheckTargetSelector(id target, SEL selector, const std::vector<const char *> &typeEncodings) noexcept;
+#endif
 
 NSString *_CKComponentResponderChainDebugResponderChain(id responder) noexcept;
 
 #pragma mark - Sending
 
-NSInvocation *CKComponentActionSendResponderInvocationPrepare(SEL selector, id target, CKComponent *sender) noexcept;
+struct CKActionInfo {
+  IMP imp;
+  id responder;
+};
+
+CKActionInfo CKActionFind(SEL selector, id target) noexcept;
 
 template<typename... T>
 static void CKComponentActionSendResponderChain(SEL selector, id target, CKComponent *sender, T... args) {
-  NSInvocation *invocation = CKComponentActionSendResponderInvocationPrepare(selector, target, sender);
-  // We use a recursive argument unpack to unwrap the variadic arguments in-order on the invocation in a type-safe
-  // manner.
-  CKConfigureInvocationWithArguments(invocation, 3, args...);
-  // NSInvocation does not by default retain its target or object arguments. We have to manually call this to ensure
-  // that these arguments and target are not deallocated through the scope of the invocation.
-  [invocation retainArguments];
-  [invocation invoke];
+
+  const CKActionInfo info = CKActionFind(selector, target);
+  if (!info.responder) {
+    return;
+  }
+  CKCAssert([info.responder methodSignatureForSelector:selector].numberOfArguments <= sizeof...(args) + 3,
+            @"Target invocation contains too many arguments => sender: %@ | SEL: %@ | target: %@",
+            sender, NSStringFromSelector(selector), [target class]);
+  
+  // ARC assumes all IMPs return an id and will try to retain void,
+  // so have to case the IMP since it returns void.
+  void (*typedFunction)(id, SEL, id, T...) = (void (*)(id, SEL, id, T...))info.imp;
+  typedFunction(info.responder, selector, sender, args...);
 }

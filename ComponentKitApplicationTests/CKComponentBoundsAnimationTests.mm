@@ -57,7 +57,7 @@
   CKComponent *(^block)(void) = ^{
     return [CKBoundsAnimationComponent newWithIdentifier:@0];
   };
-  const CKBuildComponentResult firstResult = CKBuildComponent(CKComponentScopeRootWithDefaultPredicates(nil), {}, block);
+  const CKBuildComponentResult firstResult = CKBuildComponent(CKComponentScopeRootWithDefaultPredicates(nil, nil), {}, block);
   const CKBuildComponentResult secondResult = CKBuildComponent(firstResult.scopeRoot, {}, block);
   XCTAssertEqual(secondResult.boundsAnimation.duration, 0.5);
 }
@@ -69,13 +69,13 @@
   };
   UIView *container = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 100, 100)];
 
-  const CKBuildComponentResult firstResult = CKBuildComponent(CKComponentScopeRootWithDefaultPredicates(nil), {}, block);
+  const CKBuildComponentResult firstResult = CKBuildComponent(CKComponentScopeRootWithDefaultPredicates(nil, nil), {}, block);
   const CKComponentLayout firstLayout = [firstResult.component layoutThatFits:{{50, 50}, {50, 50}} parentSize:{}];
-  NSSet *firstMountedComponents = CKMountComponentLayout(firstLayout, container, nil, nil);
+  NSSet *firstMountedComponents = CKMountComponentLayout(firstLayout, container, nil, nil).mountedComponents;
 
   const CKBuildComponentResult secondResult = CKBuildComponent(firstResult.scopeRoot, {}, block);
   const CKComponentLayout secondLayout = [secondResult.component layoutThatFits:{{100, 100}, {100, 100}} parentSize:{}];
-  NSSet *secondMountedComponents = CKMountComponentLayout(secondLayout, container, firstMountedComponents, nil);
+  NSSet *secondMountedComponents = CKMountComponentLayout(secondLayout, container, firstMountedComponents, nil).mountedComponents;
 
   CKBoundsAnimationRecordingView *v = (CKBoundsAnimationRecordingView *)secondResult.component.viewContext.view;
   XCTAssertTrue(v.animatedLastBoundsChange);
@@ -87,7 +87,7 @@
 {
   UIView *container = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 100, 100)];
 
-  const CKBuildComponentResult firstResult = CKBuildComponent(CKComponentScopeRootWithDefaultPredicates(nil), {}, ^{
+  const CKBuildComponentResult firstResult = CKBuildComponent(CKComponentScopeRootWithDefaultPredicates(nil, nil), {}, ^{
     return [CKFlexboxComponent
             newWithView:{}
             size:{}
@@ -97,7 +97,7 @@
             }];
   });
   const CKComponentLayout firstLayout = [firstResult.component layoutThatFits:{{100, 100}, {100, 100}} parentSize:{}];
-  NSSet *firstMountedComponents = CKMountComponentLayout(firstLayout, container, nil, nil);
+  NSSet *firstMountedComponents = CKMountComponentLayout(firstLayout, container, nil, nil).mountedComponents;
 
   const CKBuildComponentResult secondResult = CKBuildComponent(firstResult.scopeRoot, {}, ^{
     return [CKFlexboxComponent
@@ -110,7 +110,7 @@
             }];
   });
   const CKComponentLayout secondLayout = [secondResult.component layoutThatFits:{{100, 100}, {100, 100}} parentSize:{}];
-  NSSet *secondMountedComponents = CKMountComponentLayout(secondLayout, container, firstMountedComponents, nil);
+  NSSet *secondMountedComponents = CKMountComponentLayout(secondLayout, container, firstMountedComponents, nil).mountedComponents;
 
   XCTAssertEqual([container.subviews count], 2u);
   XCTAssertTrue(((CKBoundsAnimationRecordingView *)container.subviews[0]).animatedLastBoundsChange);
@@ -123,17 +123,17 @@
 {
   UIView *container = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 100, 100)];
 
-  const CKBuildComponentResult firstResult = CKBuildComponent(CKComponentScopeRootWithDefaultPredicates(nil), {}, ^{
+  const CKBuildComponentResult firstResult = CKBuildComponent(CKComponentScopeRootWithDefaultPredicates(nil, nil), {}, ^{
     return [CKBoundsAnimationComponent newWithIdentifier:@0];
   });
   const CKComponentLayout firstLayout = [firstResult.component layoutThatFits:{{50, 50}, {50, 50}} parentSize:{}];
-  NSSet *firstMountedComponents = CKMountComponentLayout(firstLayout, container, nil, nil);
+  NSSet *firstMountedComponents = CKMountComponentLayout(firstLayout, container, nil, nil).mountedComponents;
 
   const CKBuildComponentResult secondResult = CKBuildComponent(firstResult.scopeRoot, {}, ^{
     return [CKBoundsAnimationComponent newWithIdentifier:@1];
   });
   const CKComponentLayout secondLayout = [secondResult.component layoutThatFits:{{100, 100}, {100, 100}} parentSize:{}];
-  NSSet *secondMountedComponents = CKMountComponentLayout(secondLayout, container, firstMountedComponents, nil);
+  NSSet *secondMountedComponents = CKMountComponentLayout(secondLayout, container, firstMountedComponents, nil).mountedComponents;
 
   CKBoundsAnimationRecordingView *v = (CKBoundsAnimationRecordingView *)secondResult.component.viewContext.view;
   XCTAssertFalse(v.animatedLastBoundsChange);
@@ -145,7 +145,7 @@
 {
   UIView *container = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 100, 100)];
 
-  const CKBuildComponentResult firstResult = CKBuildComponent(CKComponentScopeRootWithDefaultPredicates(nil), {}, ^{
+  const CKBuildComponentResult firstResult = CKBuildComponent(CKComponentScopeRootWithDefaultPredicates(nil, nil), {}, ^{
     CKComponentScope scope([CKFlexboxComponent class], @"foo");
     return [CKFlexboxComponent
             newWithView:{[CKBoundsAnimationRecordingView class]}
@@ -156,7 +156,7 @@
             }];
   });
   const CKComponentLayout firstLayout = [firstResult.component layoutThatFits:{{50, 50}, {50, 50}} parentSize:{}];
-  NSSet *firstMountedComponents = CKMountComponentLayout(firstLayout, container, nil, nil);
+  NSSet *firstMountedComponents = CKMountComponentLayout(firstLayout, container, nil, nil).mountedComponents;
 
   const CKBuildComponentResult secondResult = CKBuildComponent(firstResult.scopeRoot, {}, ^{
     // Change the scope identifier for the new version of the stack. This means that the outer view's bounds change
@@ -175,10 +175,12 @@
             }];
   });
   const CKComponentLayout secondLayout = [secondResult.component layoutThatFits:{{100, 100}, {100, 100}} parentSize:{}];
-  NSSet *secondMountedComponents = CKMountComponentLayout(secondLayout, container, firstMountedComponents, nil);
+  NSSet *secondMountedComponents = CKMountComponentLayout(secondLayout, container, firstMountedComponents, nil).mountedComponents;
 
+#if CK_ASSERTIONS_ENABLED
   CKBoundsAnimationRecordingView *v = (CKBoundsAnimationRecordingView *)secondResult.component.viewContext.view;
   CKBoundsAnimationRecordingView *subview = [[v subviews] firstObject];
+#endif
   CKAssertTrue(subview != nil && subview.animatedLastBoundsChange == NO);
 
   CKUnmountComponents(secondMountedComponents);

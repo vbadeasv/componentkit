@@ -11,21 +11,38 @@
 #import "CKComponentLayout.h"
 
 #import <stack>
+#import <unordered_map>
 
 #import <CoreGraphics/CoreGraphics.h>
 #import <UIKit/UIKit.h>
 
 #import "ComponentUtilities.h"
+#import "CKAnalyticsListener.h"
 #import "CKComponentInternal.h"
 #import "CKComponentSubclass.h"
 #import "CKDetectComponentScopeCollisions.h"
-#import "CKTransactionalComponentDataSourceItemInternal.h"
 
 using namespace CK::Component;
 
 static void _deleteComponentLayoutChild(void *target) noexcept
 {
   delete (std::vector<CKComponentLayoutChild> *)target;
+}
+
+static auto buildComponentsByPredicateMap(const CKComponentLayout &layout, const std::unordered_set<CKComponentPredicate> &predicates)
+{
+  auto componentsByPredicate = CKComponentRootLayout::ComponentsByPredicateMap {};
+  if (predicates.empty()) { return componentsByPredicate; }
+
+  layout.enumerateLayouts([&](const auto &l){
+    if (l.component == nil) { return; }
+    for (const auto &p : predicates) {
+      if (p(l.component)) {
+        componentsByPredicate[p].push_back(l.component);
+      }
+    }
+  });
+  return componentsByPredicate;
 }
 
 void CKOffMainThreadDeleter::operator()(std::vector<CKComponentLayoutChild> *target) noexcept
@@ -49,10 +66,11 @@ std::shared_ptr<const std::vector<CKComponentLayoutChild>> CKComponentLayout::em
   return cached;
 }
 
-NSSet *CKMountComponentLayout(const CKComponentLayout &layout,
-                              UIView *view,
-                              NSSet *previouslyMountedComponents,
-                              CKComponent *supercomponent)
+CKMountComponentLayoutResult CKMountComponentLayout(const CKComponentLayout &layout,
+                                                    UIView *view,
+                                                    NSSet *previouslyMountedComponents,
+                                                    CKComponent *supercomponent,
+                                                    id<CKAnalyticsListener> analyticsListener)
 {
   struct MountItem {
     const CKComponentLayout &layout;
@@ -60,11 +78,13 @@ NSSet *CKMountComponentLayout(const CKComponentLayout &layout,
     CKComponent *supercomponent;
     BOOL visited;
   };
+
+  [analyticsListener willMountComponentTreeWithRootComponent:layout.component];
   // Using a stack to mount ensures that the components are mounted
   // in a DFS fashion which is handy if you want to animate a subpart
   // of the tree
   std::stack<MountItem> stack;
-  stack.push({layout, MountContext::RootContext(view), supercomponent, NO});
+  stack.push({layout, MountContext::RootContext(view, CKComponentLayoutOrAncestorHasScopeConflict(layout)), supercomponent, NO});
   NSMutableSet *mountedComponents = [NSMutableSet set];
 
   layout.component.rootComponentMountedView = view;
@@ -89,27 +109,46 @@ NSSet *CKMountComponentLayout(const CKComponentLayout &layout,
         // Ordering of components should correspond to ordering of mount. Push components on backwards so the
         // bottom-most component is mounted first.
         for (auto riter = item.layout.children->rbegin(); riter != item.layout.children->rend(); riter ++) {
-          stack.push({riter->layout, mountResult.contextForChildren.offset(riter->position, item.layout.size, riter->layout.size), item.layout.component, NO});
+          BOOL hasScopeConflict = CKComponentLayoutOrAncestorHasScopeConflict(item.layout);
+          stack.push({riter->layout, mountResult.contextForChildren.offset(riter->position, item.layout.size, riter->layout.size, hasScopeConflict), item.layout.component, NO});
         }
       }
     }
   }
 
+  NSMutableSet *componentsToUnmount;
   if (previouslyMountedComponents) {
     // Unmount any components that were in previouslyMountedComponents but are no longer in mountedComponents.
-    NSMutableSet *componentsToUnmount = [previouslyMountedComponents mutableCopy];
+    componentsToUnmount = [previouslyMountedComponents mutableCopy];
     [componentsToUnmount minusSet:mountedComponents];
     CKUnmountComponents(componentsToUnmount);
   }
+  [analyticsListener didMountComponentTreeWithRootComponent:layout.component];
 
-  return mountedComponents;
+  return {mountedComponents, componentsToUnmount};
 }
 
-CKComponentLayout CKComputeRootComponentLayout(CKComponent *rootComponent, const CKSizeRange &sizeRange)
+CKComponentRootLayout CKComputeRootComponentLayout(CKComponent *rootComponent,
+                                                   const CKSizeRange &sizeRange,
+                                                   id<CKAnalyticsListener> analyticsListener,
+                                                   std::unordered_set<CKComponentPredicate> predicates)
 {
-  const CKComponentLayout layout = CKComputeComponentLayout(rootComponent, sizeRange, sizeRange.max);
+  [analyticsListener willLayoutComponentTreeWithRootComponent:rootComponent];
+  CKComponentLayout layout = CKComputeComponentLayout(rootComponent, sizeRange, sizeRange.max);
   CKDetectComponentScopeCollisions(layout);
-  return layout;
+  auto layoutCache = CKComponentRootLayout::ComponentLayoutCache {};
+  layout.enumerateLayouts([&](const auto &l){
+    if (l.component.controller) {
+      layoutCache[l.component] = l;
+    }
+  });
+  const auto componentsByPredicate = buildComponentsByPredicateMap(layout, predicates);
+  [analyticsListener didLayoutComponentTreeWithRootComponent:rootComponent];
+  return CKComponentRootLayout {
+    layout,
+    layoutCache,
+    componentsByPredicate,
+  };
 }
 
 CKComponentLayout CKComputeComponentLayout(CKComponent *component,
@@ -123,5 +162,15 @@ void CKUnmountComponents(NSSet *componentsToUnmount)
 {
   for (CKComponent *component in componentsToUnmount) {
     [component unmount];
+  }
+}
+
+void CKComponentLayout::enumerateLayouts(const std::function<void(const CKComponentLayout &)> &f) const
+{
+  f(*this);
+
+  if (children == nil) { return; }
+  for (const auto &child : *children) {
+    child.layout.enumerateLayouts(f);
   }
 }

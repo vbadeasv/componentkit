@@ -14,6 +14,11 @@
 
 @implementation CKLifecycleTestComponent
 
++ (Class<CKComponentControllerProtocol>)controllerClass
+{
+  return [CKLifecycleTestComponentController class];
+}
+
 static BOOL _shouldEarlyReturnNew = NO;
 
 + (void)setShouldEarlyReturnNew:(BOOL)shouldEarlyReturnNew
@@ -135,9 +140,17 @@ static BOOL _shouldEarlyReturnNew = NO;
 
 - (void)invalidateController
 {
-  CKAssertMainThread();
+  if (![NSThread isMainThread]) {
+    CKFatal(@"InvalidateController should only be called on main thread");
+  }
   [super invalidateController];
   _calledInvalidateController = YES;
+}
+
+- (void)didPrepareLayout:(const CKComponentLayout &)layout forComponent:(CKComponent *)component
+{
+  CKAssertMainThread();
+  _calledDidPrepareLayoutForComponent = YES;
 }
 
 -(BOOL)canPerformAction:(SEL)action withSender:(id)sender

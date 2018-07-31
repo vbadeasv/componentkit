@@ -8,30 +8,27 @@
  *
  */
 
-/*
- *  Copyright (c) 2014-present, Facebook, Inc.
- *  All rights reserved.
- *
- *  This source code is licensed under the BSD-style license found in the
- *  LICENSE file in the root directory of this source tree. An additional grant
- *  of patent rights can be found in the PATENTS file in the same directory.
- *
- */
-
 #import <vector>
 
 #import <ComponentKit/CKComponent.h>
 #import <ComponentKit/CKContainerWrapper.h>
 
-typedef NS_ENUM(NSUInteger, CKFlexboxDirection) {
-  CKFlexboxDirectionVertical,
-  CKFlexboxDirectionHorizontal,
-  CKFlexboxDirectionVerticalReverse,
-  CKFlexboxDirectionHorizontalReverse,
+typedef NS_ENUM(NSInteger, CKFlexboxDirection) {
+  CKFlexboxDirectionColumn,
+  CKFlexboxDirectionRow,
+  CKFlexboxDirectionColumnReverse,
+  CKFlexboxDirectionRowReverse,
+};
+
+/** Layout direction is used to support RTL */
+typedef NS_ENUM(NSInteger, CKLayoutDirection) {
+  CKLayoutDirectionApplicationDirection,
+  CKLayoutDirectionLTR,
+  CKLayoutDirectionRTL,
 };
 
 /** If no children are flexible, how should this component justify its children in the available space? */
-typedef NS_ENUM(NSUInteger, CKFlexboxJustifyContent) {
+typedef NS_ENUM(NSInteger, CKFlexboxJustifyContent) {
   /**
    On overflow, children overflow out of this component's bounds on the right/bottom side.
    On underflow, children are left/top-aligned within this component's bounds.
@@ -52,12 +49,20 @@ typedef NS_ENUM(NSUInteger, CKFlexboxJustifyContent) {
    */
   CKFlexboxJustifyContentSpaceBetween,
   /**
-   Items are positioned with space before, between, and after the line.
+   Items are positioned with space before, between, and after the lines.
+   The space before and after the lines are half the size of the space between the lines.
    */
   CKFlexboxJustifyContentSpaceAround,
+  /**
+   Items are positioned with space before, between, and after the lines.
+   The space before, between, and after the lines are all of equal size.
+   */
+  CKFlexboxJustifyContentSpaceEvenly,
 };
 
-typedef NS_ENUM(NSUInteger, CKFlexboxAlignItems) {
+typedef NS_ENUM(NSInteger, CKFlexboxAlignItems) {
+  /** Expand children to fill cross axis */
+  CKFlexboxAlignItemsStretch,
   /** Align children to start of cross axis */
   CKFlexboxAlignItemsStart,
   /** Align children with end of cross axis */
@@ -66,11 +71,9 @@ typedef NS_ENUM(NSUInteger, CKFlexboxAlignItems) {
   CKFlexboxAlignItemsCenter,
   /** Align children such that their baselines align */
   CKFlexboxAlignItemsBaseline,
-  /** Expand children to fill cross axis */
-  CKFlexboxAlignItemsStretch,
 };
 
-typedef NS_ENUM(NSUInteger, CKFlexboxAlignContent) {
+typedef NS_ENUM(NSInteger, CKFlexboxAlignContent) {
   /** Align lines to start of container */
   CKFlexboxAlignContentStart,
   /** Align lines to end of container */
@@ -89,7 +92,7 @@ typedef NS_ENUM(NSUInteger, CKFlexboxAlignContent) {
  Each child may override their parent stack's cross axis alignment.
  @see CKFlexboxAlignItems
  */
-typedef NS_ENUM(NSUInteger, CKFlexboxAlignSelf) {
+typedef NS_ENUM(NSInteger, CKFlexboxAlignSelf) {
   /** Inherit alignment value from containing stack. */
   CKFlexboxAlignSelfAuto,
   CKFlexboxAlignSelfStart,
@@ -99,7 +102,7 @@ typedef NS_ENUM(NSUInteger, CKFlexboxAlignSelf) {
   CKFlexboxAlignSelfStretch,
 };
 
-typedef NS_ENUM(NSUInteger, CKFlexboxWrap) {
+typedef NS_ENUM(NSInteger, CKFlexboxWrap) {
   /** Children are not wrapped */
   CKFlexboxWrapNoWrap,
   /** Children are wrapped if necessary */
@@ -108,7 +111,7 @@ typedef NS_ENUM(NSUInteger, CKFlexboxWrap) {
   CKFlexboxWrapWrapReverse,
 };
 
-typedef NS_ENUM(NSUInteger, CKFlexboxPositionType) {
+typedef NS_ENUM(NSInteger, CKFlexboxPositionType) {
   /** Specifies the type of position children are stacked in */
   CKFlexboxPositionTypeRelative,
   /** With the absolute position, child is positioned relative to parent */
@@ -131,30 +134,64 @@ struct CKFlexboxPosition {
   CKRelativeDimension right;
 };
 
+/** Allows us to differentiate between an explicitly set border and an undefined border */
+class CKFlexboxBorderDimension {
+public:
+  constexpr CKFlexboxBorderDimension() noexcept : _value(), _isDefined(false) {}
+
+  /** Convenience initializer */
+  CKFlexboxBorderDimension(CGFloat value) noexcept : CKFlexboxBorderDimension(value, true) {}
+
+  CGFloat value() const noexcept {
+    return _value;
+  }
+
+  bool isDefined() const noexcept {
+    return _isDefined;
+  }
+
+private:
+  CKFlexboxBorderDimension(CGFloat value, bool isDefined)
+  : _value(value), _isDefined(isDefined) {}
+  CGFloat _value;
+  // Make sizeof(_isDefined) == sizeof(_value) to get smaller code via SLP vectorization.
+  NSUInteger _isDefined;
+};
+
+struct CKFlexboxBorder {
+  CKFlexboxBorderDimension top;
+  CKFlexboxBorderDimension bottom;
+  CKFlexboxBorderDimension left;
+  CKFlexboxBorderDimension right;
+  CKFlexboxBorderDimension start;
+  CKFlexboxBorderDimension end;
+};
+
 /** Allows us to differentiate between an explicitly set auto-dimension and an undefined dimension */
 class CKFlexboxDimension {
 public:
   constexpr CKFlexboxDimension() noexcept : _relativeDimension(CKRelativeDimension()), _isDefined(false) {}
-  
+
   /** Convenience initializer for points */
   CKFlexboxDimension(CGFloat points) noexcept : CKFlexboxDimension(CKRelativeDimension(points), true) {}
-  
+
   /** Convenience initializer for a dimension object */
   CKFlexboxDimension(CKRelativeDimension dimension) noexcept : CKFlexboxDimension(dimension, true) {}
-  
+
   CKRelativeDimension dimension() const noexcept {
     return _relativeDimension;
   }
-  
+
   bool isDefined() const noexcept {
     return _isDefined;
   }
-  
+
 private:
   CKFlexboxDimension(CKRelativeDimension dimension, bool isDefined)
   : _relativeDimension(dimension), _isDefined(isDefined) {}
   CKRelativeDimension _relativeDimension;
-  bool _isDefined;
+  // Make sizeof(_isDefined) == sizeof(void *) to get smaller code via SLP vectorization.
+  NSUInteger _isDefined;
 };
 
 struct CKFlexboxSpacing {
@@ -169,23 +206,24 @@ struct CKFlexboxSpacing {
 class CKFlexboxAspectRatio {
 public:
   constexpr CKFlexboxAspectRatio() noexcept : _aspectRatio(), _isDefined(false) {}
-  
+
   /** Convenience initializer for an aspect ratio */
   CKFlexboxAspectRatio(CGFloat aspectRatio) noexcept : CKFlexboxAspectRatio(aspectRatio, true) {}
-  
+
   CGFloat aspectRatio() const noexcept {
     return _aspectRatio;
   }
-  
+
   bool isDefined() const noexcept {
     return _isDefined;
   }
-  
+
 private:
   CKFlexboxAspectRatio(CGFloat aspectRatio, bool isDefined)
   : _aspectRatio(aspectRatio < 0 ? fabs(aspectRatio) : aspectRatio), _isDefined(isDefined) {}
   CGFloat _aspectRatio;
-  bool _isDefined;
+  // Make sizeof(_isDefined) == sizeof(_aspectRatio) to get smaller code via SLP vectorization.
+  NSUInteger _isDefined;
 };
 
 struct CKFlexboxComponentStyle {
@@ -205,6 +243,17 @@ struct CKFlexboxComponentStyle {
   CKFlexboxWrap wrap;
   /** Padding applied to the container */
   CKFlexboxSpacing padding;
+  /**
+    Border applied to the container. This only reserves space for the border - you are responsible for drawing the border.
+    Border behaves nearly identically to padding and is only separate from padding to make it easier
+    to implement border effects such as color.
+   */
+  CKFlexboxBorder border;
+  /**
+   Use to support RTL layouts.
+   The default is to follow the application's layout direction, but you can force a LTR or RTL layout by changing this.
+   */
+  CKLayoutDirection layoutDirection = CKLayoutDirectionApplicationDirection;
 };
 
 struct CKFlexboxComponentChild {
@@ -213,8 +262,17 @@ struct CKFlexboxComponentChild {
   CGFloat spacingBefore;
   /** Additional space to place after the component in the stacking direction. Overriden by any margins in the stacking direction. */
   CGFloat spacingAfter;
-  /** Margin applied to the child. Setting margin in the stacking direction overrides any spacing set on the container or child. */
+  /** Margin applied to the child. Setting margin in the stacking direction overrides any spacing set on the container or child.
+   Margin is applied outside the child - margin doesn't increase your child size.
+   If you want to add space inside the child, use Padding property
+   */
   CKFlexboxSpacing margin;
+  /** Padding applied to the child.
+   IMPORTANT! This padding is applicable only for current Flexbox and will not apply to the child internal layout. You need to apply it there separately if you need.
+   Padding is applied inside the child - padding increases your child size.
+   If you want to add space outside the child, use Margin property.
+   */
+  CKFlexboxSpacing padding;
   /**
    If the sum of childrens' stack dimensions is less than the minimum size, how much should this component grow?
    This value represents the "flex grow factor" and determines how much this component should grow in relation to any
@@ -238,14 +296,20 @@ struct CKFlexboxComponentChild {
    If children have the same zIndex, the one declared first will appear below
    */
   NSInteger zIndex;
-  /** Padding applied to the child */
-  CKFlexboxSpacing padding;
   /** Aspect ratio controls the size of the undefined dimension of a node.
    Aspect ratio is encoded as a floating point value width/height. e.g. A value of 2 leads to a node
    with a width twice the size of its height while a value of 0.5 gives the opposite effect. **/
   CKFlexboxAspectRatio aspectRatio;
-  /** This property allows node to force rounding only up.
-   Text should never be rounded down as this may cause it to be truncated. **/
+  /**
+   Size constraints on the child. Percentages are resolved against parent size.
+   If constraint is Auto, will resolve against size of children Component
+   By default all values are Auto
+   **/
+  CKComponentSize sizeConstraints;
+  /**
+   This property allows node to force rounding only up.
+   Text should never be rounded down as this may cause it to be truncated.
+   */
   BOOL useTextRounding;
 };
 
@@ -257,25 +321,21 @@ extern const struct CKStackComponentLayoutExtraKeys {
   NSString * const hadOverflow;
 } CKStackComponentLayoutExtraKeys;
 
+/** Context to adjust all flexbox instances */
+@interface CKFlexboxComponentContext: NSObject
++ (instancetype)newWithUsesDeepYogaTrees:(BOOL)usesDeepYogaTrees;
+@end
+
 /**
- A simple layout component that stacks a list of children vertically or horizontally.
- 
- - All children are initially laid out with the an infinite available size in the stacking direction.
- - In the other direction, this component's constraint is passed.
- - The children's sizes are summed in the stacking direction.
- - If this sum is less than this component's minimum size in stacking direction, children with flexGrow are flexed.
- - If it is greater than this component's maximum size in the stacking direction, children with flexShrink are flexed.
- - If, even after flexing, the sum is still greater than this component's maximum size in the stacking direction,
- justifyContent determines how children are laid out.
- 
- For example:
- - Suppose stacking direction is Vertical, min-width=100, max-width=300, min-height=200, max-height=500.
- - All children are laid out with min-width=100, max-width=300, min-height=0, max-height=INFINITY.
- - If the sum of the childrens' heights is less than 200, components with flexGrow are flexed larger.
- - If the sum of the childrens' heights is greater than 500, components with flexShrink are flexed smaller.
- Each component is shrunk by `((sum of heights) - 500)/(number of components)`.
- - If the sum of the childrens' heights is greater than 500 even after flexShrink-able components are flexed,
- justifyContent determines how children are laid out.
+ @uidocs https://fburl.com/CKFlexboxComponent:ca56
+
+ A layout component that create a list of children vertically or horizontally according to Flexbox.
+
+ This component layout is powered by Yoga layout engine (https://github.com/facebook/yoga).
+ You can find more details about Yoga properties and implementation here (https://yogalayout.com/docs/)
+ Yoga playground (https://yogalayout.com/playground) allows you to experiment with different
+ layout configurations and can generate CKFlexboxComponent code for you
+
  */
 @interface CKFlexboxComponent : CKComponent
 

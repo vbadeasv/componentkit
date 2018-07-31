@@ -11,6 +11,8 @@
 #import <ComponentKit/CKComponent.h>
 
 /**
+ @uidocs https://fburl.com/CKBackgroundLayoutComponent:bf91
+
  Lays out a single child component, then lays out a background component behind it stretched to its size.
  */
 @interface CKBackgroundLayoutComponent : CKComponent

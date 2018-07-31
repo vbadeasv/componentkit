@@ -12,8 +12,10 @@
 
 #import <ComponentKit/CKAssert.h>
 #import <ComponentKit/CKMacros.h>
+#import <ComponentKit/CKComponentInternal.h>
 
 #import "CKComponentSubclass.h"
+#import "CKRenderTreeNodeWithChildren.h"
 
 @implementation CKOverlayLayoutComponent
 {
@@ -38,6 +40,30 @@
 + (instancetype)newWithView:(const CKComponentViewConfiguration &)view size:(const CKComponentSize &)size
 {
   CK_NOT_DESIGNATED_INITIALIZER();
+}
+
+- (void)buildComponentTree:(id<CKTreeNodeWithChildrenProtocol>)owner
+             previousOwner:(id<CKTreeNodeWithChildrenProtocol>)previousOwner
+                 scopeRoot:(CKComponentScopeRoot *)scopeRoot
+              stateUpdates:(const CKComponentStateUpdateMap &)stateUpdates
+                    config:(const CKBuildComponentConfig &)config
+{
+  if (config.forceParent) {
+    auto const node = [[CKTreeNodeWithChildren alloc]
+                       initWithComponent:self
+                       owner:owner
+                       previousOwner:previousOwner
+                       scopeRoot:scopeRoot
+                       stateUpdates:stateUpdates];
+
+    auto const previousOwnerForChild = (id<CKTreeNodeWithChildrenProtocol>)[previousOwner childForComponentKey:[node componentKey]];
+    [_component buildComponentTree:node previousOwner:previousOwnerForChild scopeRoot:scopeRoot stateUpdates:stateUpdates config:config];
+    [_overlay buildComponentTree:node previousOwner:previousOwnerForChild scopeRoot:scopeRoot stateUpdates:stateUpdates config:config];
+  } else {
+    [super buildComponentTree:owner previousOwner:previousOwner scopeRoot:scopeRoot stateUpdates:stateUpdates config:config];
+    [_component buildComponentTree:owner previousOwner:previousOwner scopeRoot:scopeRoot stateUpdates:stateUpdates config:config];
+    [_overlay buildComponentTree:owner previousOwner:previousOwner scopeRoot:scopeRoot stateUpdates:stateUpdates config:config];
+  }
 }
 
 /**

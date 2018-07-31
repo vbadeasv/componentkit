@@ -10,25 +10,65 @@
 
 #import "CKBuildComponent.h"
 
+#import "CKAnalyticsListener.h"
 #import "CKComponentBoundsAnimation.h"
-#import "CKComponentBoundsAnimationPredicates.h"
+#import "CKComponentEvents.h"
 #import "CKComponentInternal.h"
 #import "CKComponentScopeRoot.h"
 #import "CKComponentSubclass.h"
+#import "CKRenderTreeNodeWithChildren.h"
 #import "CKThreadLocalComponentScope.h"
 
-CKBuildComponentResult CKBuildComponent(CKComponentScopeRoot *previousRoot,
-                                        const CKComponentStateUpdateMap &stateUpdates,
-                                        CKComponent *(^componentFactory)(void))
+
+static CKBuildComponentResult _CKBuildComponent(CKComponentScopeRoot *previousRoot,
+                                                const CKComponentStateUpdateMap &stateUpdates,
+                                                const CKBuildComponentConfig &config,
+                                                CKThreadLocalComponentScope& threadScope,
+                                                CKComponent *(^componentFactory)(void))
 {
   CKCAssertNotNil(componentFactory, @"Must have component factory to build a component");
-  CKThreadLocalComponentScope threadScope(previousRoot, stateUpdates);
-  // Order of operations matters, so first store into locals and then return a struct.
+  const auto analyticsListener = [previousRoot analyticsListener];
+  [analyticsListener willBuildComponentTreeWithScopeRoot:previousRoot stateUpdates:stateUpdates];
+
   CKComponent *const component = componentFactory();
+
+  if (threadScope.newScopeRoot.hasRenderComponentInTree) {
+    // Build the component tree from the render function.
+    [component buildComponentTree:threadScope.newScopeRoot.rootNode
+                    previousOwner:previousRoot.rootNode
+                        scopeRoot:threadScope.newScopeRoot
+                     stateUpdates:stateUpdates
+                           config:config];
+  }
+
+  CKComponentScopeRoot *newScopeRoot = threadScope.newScopeRoot;
+
+  [analyticsListener didBuildComponentTreeWithScopeRoot:newScopeRoot component:component];
   return {
     .component = component,
-    .scopeRoot = threadScope.newScopeRoot,
-    .boundsAnimation = CKComponentBoundsAnimationFromPreviousScopeRoot(threadScope.newScopeRoot, previousRoot)
+    .scopeRoot = newScopeRoot,
+    .boundsAnimation = CKComponentBoundsAnimationFromPreviousScopeRoot(newScopeRoot, previousRoot),
   };
 }
 
+
+CKBuildComponentResult CKBuildComponent(CKComponentScopeRoot *previousRoot,
+                                        const CKComponentStateUpdateMap &stateUpdates,
+                                        CKComponent *(^componentFactory)(void),
+                                        CKBuildComponentConfig config)
+{
+  CKThreadLocalComponentScope threadScope(previousRoot, stateUpdates);
+  return _CKBuildComponent(previousRoot, stateUpdates, config, threadScope, componentFactory);
+}
+
+CKBuildAndLayoutComponentResult CKBuildAndLayoutComponent(CKComponentScopeRoot *previousRoot,
+                                                          const CKComponentStateUpdateMap &stateUpdates,
+                                                          const CKSizeRange &sizeRange,
+                                                          CKComponent *(^componentFactory)(void),
+                                                          const std::unordered_set<CKComponentPredicate> &layoutPredicates,
+                                                          CKBuildComponentConfig config) {
+  CKThreadLocalComponentScope threadScope(previousRoot, stateUpdates);
+  const CKBuildComponentResult buildComponentResult = _CKBuildComponent(previousRoot, stateUpdates, config, threadScope, componentFactory);
+  const auto computedLayout = CKComputeRootComponentLayout(buildComponentResult.component, sizeRange, buildComponentResult.scopeRoot.analyticsListener, layoutPredicates);
+  return {buildComponentResult, computedLayout};
+}

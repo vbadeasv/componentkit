@@ -15,7 +15,10 @@
 
 #import "CKInternalHelpers.h"
 #import "CKComponentInternal.h"
+#import "CKCompositeComponentInternal.h"
 #import "CKComponentSubclass.h"
+#import "CKTreeNode.h"
+#import "CKRenderTreeNodeWithChild.h"
 
 @interface CKCompositeComponent ()
 {
@@ -62,6 +65,38 @@
 + (instancetype)newWithView:(const CKComponentViewConfiguration &)view size:(const CKComponentSize &)size
 {
   CK_NOT_DESIGNATED_INITIALIZER();
+}
+
+- (CKComponent *)component
+{
+  return _component;
+}
+
+- (void)buildComponentTree:(id<CKTreeNodeWithChildrenProtocol>)owner
+             previousOwner:(id<CKTreeNodeWithChildrenProtocol>)previousOwner
+                 scopeRoot:(CKComponentScopeRoot *)scopeRoot
+              stateUpdates:(const CKComponentStateUpdateMap &)stateUpdates
+                    config:(const CKBuildComponentConfig &)config
+{
+  if (config.forceParent) {
+    auto const node = [[CKTreeNodeWithChild alloc]
+                       initWithComponent:self
+                       owner:owner
+                       previousOwner:previousOwner
+                       scopeRoot:scopeRoot
+                       stateUpdates:stateUpdates];
+
+    if (_component) {
+      [_component buildComponentTree:node
+                       previousOwner:(id<CKTreeNodeWithChildrenProtocol>)[previousOwner childForComponentKey:[node componentKey]]
+                           scopeRoot:scopeRoot
+                        stateUpdates:stateUpdates
+                              config:config];
+    }
+  } else {
+    [super buildComponentTree:owner previousOwner:previousOwner scopeRoot:scopeRoot stateUpdates:stateUpdates config:config];
+    [_component buildComponentTree:owner previousOwner:previousOwner scopeRoot:scopeRoot stateUpdates:stateUpdates config:config];
+  }
 }
 
 - (CKComponentLayout)computeLayoutThatFits:(CKSizeRange)constrainedSize

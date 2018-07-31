@@ -11,14 +11,17 @@
 #import "CKComponentScopeRootFactory.h"
 
 #import "CKComponentControllerEvents.h"
-#import "CKComponentBoundsAnimationPredicates.h"
+#import "CKComponentEvents.h"
 
-CKComponentScopeRoot *CKComponentScopeRootWithDefaultPredicates(id<CKComponentStateListener> listener)
+CKComponentScopeRoot *CKComponentScopeRootWithDefaultPredicates(id<CKComponentStateListener> stateListener,
+                                                                id<CKAnalyticsListener> analyticsListener)
 {
   return [CKComponentScopeRoot
-          rootWithListener:listener
+          rootWithListener:stateListener
+          analyticsListener:analyticsListener
           componentPredicates:{
-            &CKComponentBoundsAnimationPredicate
+            &CKComponentBoundsAnimationPredicate,
+            &CKComponentDidPrepareLayoutForComponentToControllerPredicate,
           }
           componentControllerPredicates:{
             &CKComponentControllerAppearanceEventPredicate,
@@ -27,15 +30,17 @@ CKComponentScopeRoot *CKComponentScopeRootWithDefaultPredicates(id<CKComponentSt
           }];
 }
 
-CKComponentScopeRoot *CKComponentScopeRootWithPredicates(id<CKComponentStateListener> listener,
-                                                         const std::unordered_set<CKComponentScopePredicate> &componentPredicates,
-                                                         const std::unordered_set<CKComponentControllerScopePredicate> &componentControllerPredicates)
+CKComponentScopeRoot *CKComponentScopeRootWithPredicates(id<CKComponentStateListener> stateListener,
+                                                         id<CKAnalyticsListener> analyticsListener,
+                                                         const std::unordered_set<CKComponentPredicate> &componentPredicates,
+                                                         const std::unordered_set<CKComponentControllerPredicate> &componentControllerPredicates)
 {
-  std::unordered_set<CKComponentScopePredicate> componentPredicatesUnion = {
-    &CKComponentBoundsAnimationPredicate
+  std::unordered_set<CKComponentPredicate> componentPredicatesUnion = {
+    &CKComponentBoundsAnimationPredicate,
+    &CKComponentDidPrepareLayoutForComponentToControllerPredicate
   };
 
-  std::unordered_set<CKComponentControllerScopePredicate> componentControllerPredicatesUnion = {
+  std::unordered_set<CKComponentControllerPredicate> componentControllerPredicatesUnion = {
     &CKComponentControllerAppearanceEventPredicate,
     &CKComponentControllerDisappearanceEventPredicate,
     &CKComponentControllerInvalidateEventPredicate
@@ -45,7 +50,8 @@ CKComponentScopeRoot *CKComponentScopeRootWithPredicates(id<CKComponentStateList
   componentControllerPredicatesUnion.insert(componentControllerPredicates.begin(), componentControllerPredicates.end());
 
   return [CKComponentScopeRoot
-          rootWithListener:listener
+          rootWithListener:stateListener
+          analyticsListener:analyticsListener
           componentPredicates:componentPredicatesUnion
           componentControllerPredicates:componentControllerPredicatesUnion];
 }

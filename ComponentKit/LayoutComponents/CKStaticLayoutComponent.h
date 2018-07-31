@@ -28,7 +28,9 @@ struct CKStaticLayoutComponentChild {
   CKRelativeSizeRange size;
 };
 
-/*
+/**
+ @uidocs https://fburl.com/CKStaticLayoutComponent:0a97
+
  A component that positions children at fixed positions.
 
  Computes a size that is the union of all childrens' frames.

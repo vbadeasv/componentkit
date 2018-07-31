@@ -11,9 +11,8 @@
 #import <UIKit/UIKit.h>
 
 #import <ComponentKit/CKComponentController.h>
-#import <ComponentKit/CKScopedComponentController.h>
 
-@interface CKComponentController () <CKScopedComponentController>
+@interface CKComponentController ()
 
 - (void)componentWillMount:(CKComponent *)component;
 - (void)componentDidMount:(CKComponent *)component;
@@ -25,4 +24,8 @@
 - (void)willStartUpdateToComponent:(CKComponent *)component;
 - (void)didFinishComponentUpdate;
 
+@end
+
+@interface CKComponentControllerContext ()
+@property (nonatomic, assign, readonly) BOOL handleAnimationsInController;
 @end
